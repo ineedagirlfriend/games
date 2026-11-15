@@ -2646,11 +2646,11 @@ async function startChat(user) {
 
       if (commandKey === "/grade") {
         const grade = effectiveSegments[1]?.toLowerCase();
-        if (grade !== "none" && !GRADE_TAGS[grade]) {
-          showLocalSystemMessage("Syntax: /grade 6th, 7th, 8th, 9th, 10th, 11th, 12th, or /grade none", true);
+        if (!GRADE_TAGS[grade]) {
+          showLocalSystemMessage("Syntax: /grade 6th, 7th, 8th, 9th, 10th, 11th, or 12th. A grade is required to use chat.", true);
           return;
         }
-        const savedGrade = grade === "none" ? "" : grade;
+        const savedGrade = grade;
         const { error } = await backend.from("users").update({ grade: savedGrade }).eq("id", currentUser.id);
         currentUserGrade = savedGrade;
         localStorage.setItem(`carsongames-grade-${currentUser.id}`, savedGrade);
