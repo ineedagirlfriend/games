@@ -145,6 +145,11 @@
     import { createClient } from "../assets/backend-client.js";
     import { AuraEngine } from "./auraEngine.js";
 
+    if (localStorage.getItem("cg-chat-rules-accepted-v1") !== "1") {
+      window.location.replace("../chat/?rules=required");
+      throw new Error("Rules agreement required before Omoggle.");
+    }
+
     // Omoggle uses live, neutral camera-performance metrics.
     // No appearance, jawline, or facial-attractiveness scoring.
     let FaceLandmarker = null;
