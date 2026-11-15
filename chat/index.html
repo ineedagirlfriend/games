@@ -2418,10 +2418,7 @@ async function startChat(user) {
   await loadAvatarIndex();
   if (!currentUserGrade) currentUserGrade = localStorage.getItem(`carsongames-grade-${user.id}`) || "";
   await showGradePicker(!currentUserGrade);
-  if (!currentUserGrade) {
-    window.location.replace("../settings/");
-    return;
-  }
+  if (!currentUserGrade) await showGradePicker(true);
   await showChatRules();
 
   listenForNewMessages(user);
