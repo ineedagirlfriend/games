@@ -2518,6 +2518,10 @@ async function startChat(user) {
   }
 
   btn.onclick = async () => {
+    if (!hasAcceptedChatRules() || !currentUserGrade) {
+      showLocalSystemMessage("You must agree to the rules and select a grade before using chat.", true);
+      return;
+    }
     if (currentUserBannedUntil && Date.now() < currentUserBannedUntil) {
       handleBannedUserDisplay();
       return;
