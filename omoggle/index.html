@@ -5,6 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Dashboard | RapidIdentity</title>
   <script src="../assets/theme-loader.js"></script>
+<script>
+    // Chat and Omoggle are unavailable until the shared rules have been accepted.
+    try {
+      if (localStorage.getItem("cg-chat-rules-accepted-v1") !== "1") {
+        window.location.replace("../chat/?rules=required");
+      }
+    } catch (_) {
+      window.location.replace("../chat/?rules=required");
+    }
+  </script>
   <link rel="stylesheet" href="../style.css">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@700;800&family=Plus+Jakarta+Sans:wght=500;600;700&display=swap" rel="stylesheet">
   <script src="peerjs.min.js"></script>
