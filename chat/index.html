@@ -1364,6 +1364,52 @@ function showLocalSystemMessage(text, isError = false) {
   renderMessages(true);
 }
 
+
+const CHAT_RULES_ACCEPTED_KEY = "cg-chat-rules-accepted-v1";
+
+function hasAcceptedChatRules() {
+  try { return localStorage.getItem(CHAT_RULES_ACCEPTED_KEY) === "1"; }
+  catch (_) { return false; }
+}
+
+function showChatRules() {
+  if (hasAcceptedChatRules()) return Promise.resolve(true);
+
+  return new Promise(resolve => {
+    const existing = document.getElementById("chat-rules-overlay");
+    if (existing) existing.remove();
+
+    const overlay = document.createElement("div");
+    overlay.id = "chat-rules-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:3000;display:flex;align-items:center;justify-content:center;padding:18px;background:rgba(0,0,0,.78);backdrop-filter:blur(9px);";
+    overlay.innerHTML = `
+      <section role="dialog" aria-modal="true" aria-labelledby="chat-rules-title" style="width:min(620px,100%);max-height:min(82dvh,760px);display:flex;flex-direction:column;background:var(--card);border:1px solid var(--border);border-radius:var(--radius-l);padding:clamp(18px,4vw,30px);box-shadow:0 24px 70px rgba(0,0,0,.55);">
+        <h2 id="chat-rules-title" style="font-family:var(--font-display);font-size:1.55rem;color:#fff;margin-bottom:7px;">Chat &amp; Omoggle Rules</h2>
+        <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:15px;">Please read the rules before continuing.</p>
+        <div id="chat-rules-scroll" tabindex="0" style="min-height:150px;max-height:48dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-m);padding:18px;color:var(--text);line-height:1.65;">
+          <p style="color:var(--text-muted);font-weight:600;">[ RULES PLACEHOLDER — ADD YOUR RULES HERE ]</p>
+        </div>
+        <p style="color:#fbbf24;font-size:.82rem;font-weight:700;line-height:1.45;margin:13px 0 17px;">Breaking any of these rules can result in a ban.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;">
+          <button id="chat-rules-agree" type="button" style="flex:1;min-width:130px;padding:12px 18px;border:0;border-radius:8px;background:#16a34a;color:#fff;font:700 1rem var(--font-display);cursor:pointer;">I agree</button>
+          <button id="chat-rules-disagree" type="button" style="flex:1;min-width:130px;padding:12px 18px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font:700 1rem var(--font-display);cursor:pointer;">I disagree</button>
+        </div>
+      </section>`;
+    document.body.appendChild(overlay);
+
+    overlay.querySelector("#chat-rules-agree").onclick = () => {
+      try { localStorage.setItem(CHAT_RULES_ACCEPTED_KEY, "1"); } catch (_) {}
+      overlay.remove();
+      resolve(true);
+    };
+
+    overlay.querySelector("#chat-rules-disagree").onclick = () => {
+      try { localStorage.removeItem(CHAT_RULES_ACCEPTED_KEY); } catch (_) {}
+      window.location.replace("./?rules=required");
+    };
+  });
+}
+
 function showGradePicker(force = false) {
   if (!currentUser) return Promise.resolve();
   const storageKey = `carsongames-grade-prompt-${currentUser.id}`;
@@ -1390,6 +1436,7 @@ function showGradePicker(force = false) {
         } else {
           currentUserGrade = grade;
         }
+        currentUserGrade = grade;
         localStorage.setItem(storageKey, "1");
         localStorage.setItem(`carsongames-grade-${currentUser.id}`, grade);
         overlay.remove();
@@ -2370,7 +2417,12 @@ async function startChat(user) {
   await loadAndCacheAllUsers();
   await loadAvatarIndex();
   if (!currentUserGrade) currentUserGrade = localStorage.getItem(`carsongames-grade-${user.id}`) || "";
-  await showGradePicker();
+  await showGradePicker(!currentUserGrade);
+  if (!currentUserGrade) {
+    window.location.replace("../settings/");
+    return;
+  }
+  await showChatRules();
 
   listenForNewMessages(user);
   scroller.addEventListener("scroll", handleScrollPagination);
@@ -3361,12 +3413,16 @@ async function forwardMessage(msgData, collection) {
 }
 
 function renderMessages(forceScrollDown = false) {
+  const scroller = document.getElementById("message-scroller");
+  if (!hasAcceptedChatRules() || !currentUserGrade) {
+    if (scroller) scroller.innerHTML = "";
+    return;
+  }
   if (currentUserBannedUntil && Date.now() < currentUserBannedUntil) {
     handleBannedUserDisplay();
     return;
   }
 
-  const scroller = document.getElementById("message-scroller");
   if (!scroller) return;
 
   const previousScrollHeight = scroller.scrollHeight;
