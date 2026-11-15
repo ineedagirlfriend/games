@@ -1413,7 +1413,7 @@ function showChatRules() {
 function showGradePicker(force = false) {
   if (!currentUser) return Promise.resolve();
   const storageKey = `carsongames-grade-prompt-${currentUser.id}`;
-  if (!force && localStorage.getItem(storageKey)) return Promise.resolve();
+  if (!force && (currentUserGrade || localStorage.getItem(storageKey))) return Promise.resolve();
 
   return new Promise(resolve => {
     const existing = document.getElementById("grade-picker-overlay");
