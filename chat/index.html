@@ -805,6 +805,7 @@
 
   <main class="chat-layout" id="chat-layout">
     <aside class="server-sidebar" id="server-sidebar" aria-label="Servers">
+      <button class="server-rail-btn" id="open-dms-btn" title="Direct messages" aria-label="Direct messages">✉</button>
       <button class="server-rail-btn add" id="create-server-btn" title="Create a server" aria-label="Create a server">+</button>
     </aside>
     <aside class="channel-sidebar" id="channel-sidebar" aria-label="Channels">
@@ -843,6 +844,115 @@ let activeChatServerId = "10000000-0000-4000-8000-000000000001";
 let activeChatChannelId = "10000000-0000-4000-8000-000000000003";
 let activeChatServer = null;
 let activeChatChannels = [];
+let isDMView = false;
+let activeChatConversationId = null;
+let activeDMConversation = null;
+let dmRealtimeChannel = null;
+
+
+async function showDMList(user){
+  isDMView=true;activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
+  await removeBackendChannel(publicChannel);publicChannel=null;
+  await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
+  dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages();
+  document.getElementById("active-server-name").textContent="Direct Messages";
+  document.querySelector(".channel-title strong").textContent="Direct Messages";
+  const rail=document.getElementById("server-sidebar");
+  rail.querySelectorAll(".server-rail-btn").forEach(b=>b.classList.remove("active"));
+  document.getElementById("open-dms-btn")?.classList.add("active");
+  const list=document.getElementById("channel-list");list.innerHTML="";
+  const {data:links,error}=await backend.from("chat_conversation_members").select("conversation_id").eq("user_id",user.id);
+  if(error){console.error("DM list:",error);return;}
+  const ids=[...new Set((links||[]).map(x=>x.conversation_id))];
+  const {data:conversations}=ids.length?await backend.from("chat_conversations").select("id,conversation_type,name,icon_url,created_by,updated_at").in("id",ids).order("updated_at",{ascending:false}):{data:[]};
+  const {data:members}=ids.length?await backend.from("chat_conversation_members").select("conversation_id,user_id").in("conversation_id",ids):{data:[]};
+  const userIds=[...new Set((members||[]).map(m=>m.user_id))];
+  const {data:profiles}=userIds.length?await backend.from("users").select("id,username").in("id",userIds):{data:[]};
+  const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
+  for(const convo of conversations||[]){
+    const people=(members||[]).filter(m=>m.conversation_id===convo.id).map(m=>names.get(m.user_id)||"User");
+    const label=convo.name||(convo.conversation_type==="group"?people.join(", "):people.find((_,i)=>(members||[]).filter(m=>m.conversation_id===convo.id)[i]?.user_id!==user.id))||"Direct message";
+    const b=document.createElement("button");b.className="channel-row";b.textContent="● "+label;b.addEventListener("click",()=>loadDMConversation(convo,user));list.appendChild(b);
+  }
+  const create=document.getElementById("create-channel-btn");create.textContent="+ New DM";create.onclick=()=>createChatConversation(user);
+  const settings=document.getElementById("server-settings-btn");settings.textContent="DM settings";settings.onclick=()=>manageDMConversation(user);
+}
+
+async function createChatConversation(user){
+  const raw=prompt("Enter one or more usernames, separated by commas. One username creates a 1-to-1 DM; multiple create a group DM:");
+  if(!raw)return;
+  const usernames=[...new Set(raw.split(",").map(x=>x.trim().replace(/^@/,"")).filter(Boolean))];
+  if(!usernames.length)return;
+  const {data:targets,error:targetError}=await backend.from("users").select("id,username").in("username",usernames);
+  if(targetError){alert(targetError.message);return;}
+  const found=targets||[];
+  const missing=usernames.filter(n=>!found.some(u=>u.username.toLowerCase()===n.toLowerCase()));
+  if(missing.length){alert("Could not find: "+missing.join(", "));return;}
+  const others=found.filter(u=>u.id!==user.id);
+  if(!others.length){alert("Choose someone other than yourself.");return;}
+  const type=others.length===1?"direct":"group";
+  const groupName=type==="group"?(prompt("Group name (optional):")||"").trim():null;
+  const {data:convo,error}=await backend.from("chat_conversations").insert({conversation_type:type,name:groupName||null,created_by:user.id}).select("id").single();
+  if(error){alert("Could not create DM: "+error.message);return;}
+  const rows=[{conversation_id:convo.id,user_id:user.id,added_by:user.id},...others.map(u=>({conversation_id:convo.id,user_id:u.id,added_by:user.id}))];
+  const added=await backend.from("chat_conversation_members").insert(rows);
+  if(added.error){await backend.from("chat_conversations").delete().eq("id",convo.id);alert("Could not add DM members. A user may have blocked this conversation. "+added.error.message);return;}
+  await showDMList(user);await loadDMConversation({id:convo.id,conversation_type:type,name:groupName},user);
+}
+
+async function loadDMConversation(convo,user){
+  isDMView=true;activeChatConversationId=convo.id;activeDMConversation=convo;
+  await removeBackendChannel(publicChannel);publicChannel=null;
+  await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
+  await removeBackendChannel(pollsChannel);pollsChannel=null;
+  dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];
+  const {data:members}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",convo.id);
+  const ids=(members||[]).map(m=>m.user_id);
+  const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
+  const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
+  const label=convo.name||(ids.filter(id=>id!==user.id).map(id=>names.get(id)||"User").join(", "))||"Direct message";
+  document.querySelector(".channel-title strong").textContent=label;
+  document.getElementById("active-server-name").textContent="Direct Messages";
+  const {data:messages,error}=await backend.from("chat_dm_messages").select("id,content,sender_id,created_at,edited_at").eq("conversation_id",convo.id).is("deleted_at",null).order("created_at",{ascending:true}).limit(100);
+  if(error){showLocalSystemMessage("Could not load this DM: "+error.message,true);return;}
+  const {data:senders}=ids.length?await backend.from("users").select("id,username,role").in("id",ids):{data:[]};
+  const senderMap=new Map((senders||[]).map(p=>[p.id,p]));
+  dbPublicMessages=(messages||[]).map(m=>({id:m.id,text:m.content,username:senderMap.get(m.sender_id)?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:senderMap.get(m.sender_id)?.role||"user",timestamp:new Date(m.created_at).getTime(),isWhisper:false,isSystemMessage:false}));
+  renderMessages(true);
+  dmRealtimeChannel=backend.channel("dm:"+convo.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_dm_messages",filter:"conversation_id=eq."+convo.id},async payload=>{
+    const m=payload.new;const {data:p}=await backend.from("users").select("username,role").eq("id",m.sender_id).maybeSingle();
+    if(!dbPublicMessages.some(x=>x.id===m.id)){dbPublicMessages.push({id:m.id,text:m.content,username:p?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:p?.role||"user",timestamp:new Date(m.created_at).getTime()});renderMessages(true);}
+  }).subscribe();
+  await backend.from("chat_conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",convo.id).eq("user_id",user.id);
+}
+
+async function manageDMConversation(user){
+  if(!activeChatConversationId){alert("Open a DM first.");return;}
+  const action=prompt("DM options:\n1 Rename group\n2 Add members\n3 Leave conversation\n4 Block a member");
+  if(action==="1"&&activeDMConversation?.conversation_type==="group"){
+    const name=prompt("New group name:",activeDMConversation.name||"");if(name===null)return;
+    const {error}=await backend.from("chat_conversations").update({name:name.trim()||null,updated_at:new Date().toISOString()}).eq("id",activeChatConversationId);
+    if(error)alert(error.message);else{activeDMConversation.name=name.trim()||null;await loadDMConversation(activeDMConversation,user);}
+  }else if(action==="2"&&activeDMConversation?.conversation_type==="group"){
+    const raw=prompt("Usernames to add, separated by commas:");if(!raw)return;
+    const usernames=raw.split(",").map(x=>x.trim().replace(/^@/,"")).filter(Boolean);
+    const {data:targets}=await backend.from("users").select("id,username").in("username",usernames);
+    const existing=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",activeChatConversationId);
+    const known=new Set((existing.data||[]).map(x=>x.user_id));
+    const rows=(targets||[]).filter(x=>!known.has(x.id)).map(x=>({conversation_id:activeChatConversationId,user_id:x.id,added_by:user.id}));
+    if(!rows.length){alert("No new members to add.");return;}
+    const {error}=await backend.from("chat_conversation_members").insert(rows);if(error)alert(error.message);else await loadDMConversation(activeDMConversation,user);
+  }else if(action==="3"){
+    if(confirm("Leave this conversation?")){await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);await showDMList(user);}
+  }else if(action==="4"){
+    const {data:members}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",activeChatConversationId);
+    const ids=(members||[]).map(x=>x.user_id).filter(id=>id!==user.id);
+    const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
+    const targetName=prompt("Username to block: "+(profiles||[]).map(x=>x.username).join(", "));if(!targetName)return;
+    const target=(profiles||[]).find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());if(!target){alert("Member not found.");return;}
+    const {error}=await backend.from("chat_user_blocks").upsert({blocker_id:user.id,blocked_id:target.id});if(error)alert(error.message);else{await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId);await showDMList(user);alert("User blocked.");}
+  }
+}
 
 function setActiveChatTitle(channel) {
   const title = document.querySelector(".channel-title strong");
@@ -850,6 +960,7 @@ function setActiveChatTitle(channel) {
 }
 
 async function loadChatNavigation(user) {
+  isDMView = false;
   const rail = document.getElementById("server-sidebar");
   const list = document.getElementById("channel-list");
   if (!rail || !list || !user?.id) return;
@@ -861,7 +972,8 @@ async function loadChatNavigation(user) {
   const rows = servers || [];
   if (!rows.length) { document.getElementById("active-server-name").textContent="No servers"; return; }
   if (!rows.some(s=>s.id===activeChatServerId)) activeChatServerId=(rows.find(s=>s.is_system)||rows[0]).id;
-  rail.innerHTML='<button class="server-rail-btn add" id="create-server-btn" title="Create a server">+</button>';
+  rail.innerHTML='<button class="server-rail-btn" id="open-dms-btn" title="Direct messages">✉</button><button class="server-rail-btn add" id="create-server-btn" title="Create a server">+</button>';
+  document.getElementById("open-dms-btn")?.addEventListener("click",()=>showDMList(user));
   for (const server of rows) {
     const b=document.createElement("button");
     b.className="server-rail-btn"+(server.id===activeChatServerId?" active":"");
@@ -2672,6 +2784,13 @@ async function startChat(user) {
     
     let textToSend = input.value.trim();
     if (!textToSend) return;
+
+    if (isDMView && activeChatConversationId) {
+      const { error } = await backend.from("chat_dm_messages").insert({conversation_id:activeChatConversationId,sender_id:currentUser.id,content:textToSend});
+      if (error) { showLocalSystemMessage(error.message || "Could not send DM.", true); return; }
+      input.value = "";
+      return;
+    }
 
     if (currentUserMutedUntil && Date.now() < currentUserMutedUntil) {
       startCooldownTimer(currentUserMutedUntil);
