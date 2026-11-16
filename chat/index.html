@@ -869,14 +869,19 @@ async function showDMList(user){
   if(error){console.error("DM list:",error);return;}
   const ids=[...new Set((links||[]).map(x=>x.conversation_id))];
   const {data:conversations}=ids.length?await backend.from("chat_conversations").select("id,conversation_type,name,icon_url,created_by,updated_at").in("id",ids).order("updated_at",{ascending:false}):{data:[]};
-  const {data:members}=ids.length?await backend.from("chat_conversation_members").select("conversation_id,user_id").in("conversation_id",ids):{data:[]};
+  const {data:members}=ids.length?await backend.from("chat_conversation_members").select("conversation_id,user_id,last_read_at").in("conversation_id",ids):{data:[]};
+  const readTimes=new Map((members||[]).filter(m=>m.user_id===user.id).map(m=>[m.conversation_id,m.last_read_at?new Date(m.last_read_at).getTime():0]));
+  const earliestRead=Math.min(...[...readTimes.values()],0);
+  const {data:recentDMs}=ids.length?await backend.from("chat_dm_messages").select("conversation_id,sender_id,created_at").in("conversation_id",ids).gt("created_at",new Date(earliestRead).toISOString()).order("created_at",{ascending:false}).limit(2000):{data:[]};
   const userIds=[...new Set((members||[]).map(m=>m.user_id))];
   const {data:profiles}=userIds.length?await backend.from("users").select("id,username").in("id",userIds):{data:[]};
   const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
   for(const convo of conversations||[]){
-    const people=(members||[]).filter(m=>m.conversation_id===convo.id).map(m=>names.get(m.user_id)||"User");
-    const label=convo.name||(convo.conversation_type==="group"?people.join(", "):people.find((_,i)=>(members||[]).filter(m=>m.conversation_id===convo.id)[i]?.user_id!==user.id))||"Direct message";
-    const b=document.createElement("button");b.className="channel-row";b.textContent="● "+label;b.addEventListener("click",()=>loadDMConversation(convo,user));list.appendChild(b);
+    const people=(members||[]).filter(m=>m.conversation_id===convo.id&&m.user_id!==user.id).map(m=>names.get(m.user_id)||"User");
+    const label=convo.name||people.join(", ")||"Direct message";
+    const lastRead=readTimes.get(convo.id)||0;
+    const unread=(recentDMs||[]).filter(m=>m.conversation_id===convo.id&&m.sender_id!==user.id&&new Date(m.created_at).getTime()>lastRead).length;
+    const b=document.createElement("button");b.className="channel-row";b.textContent="● "+label+(unread?" ("+unread+" new)":"");b.addEventListener("click",()=>loadDMConversation(convo,user));list.appendChild(b);
   }
   const create=document.getElementById("create-channel-btn");create.textContent="+ New DM";create.onclick=()=>createChatConversation(user);
   document.getElementById("create-category-btn").style.display="none";
