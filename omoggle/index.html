@@ -877,8 +877,8 @@
       resultText.innerText = "";
       btnNext.style.display = "none";
       btnExit.style.display = "none";
-      isTransitioningToNextMatch = false;
       await startMatchmaking();
+      isTransitioningToNextMatch = false;
     });
     btnExit.addEventListener('click', cleanExit);
 
