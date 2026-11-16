@@ -1146,7 +1146,11 @@
             if (deleteError) throw deleteError;
 
             if (updatedTexts.length > 0) {
-              const rowsToInsert = updatedTexts.map(text => ({ text }));
+              const orderBaseTime = Date.now();
+              const rowsToInsert = updatedTexts.map((text, index) => ({
+                text,
+                created_at: new Date(orderBaseTime + index).toISOString()
+              }));
               const { error: insertError } = await backend.from("announcements").insert(rowsToInsert);
               if (insertError) throw insertError;
             }
