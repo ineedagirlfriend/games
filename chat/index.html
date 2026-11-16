@@ -206,13 +206,6 @@
       .action-control-btn:hover .tray-icon-img {
         opacity: 1;
       }
-      .btn-upload-file:hover {
-        background: #35373c;
-        border-color: rgba(255, 255, 255, 0.25);
-      }
-      .btn-upload-file:hover svg {
-        color: #ffffff;
-      }
       .suggestion-item:hover {
         background: var(--card-hover);
         color: #fff;
@@ -629,33 +622,10 @@
       align-items: center;
     }
 
-    .btn-upload-file {
-      position: absolute;
-      left: 10px;
-      z-index: 2;
-      width: 32px;
-      height: 32px;
-      border-radius: 8px;
-      background: #2b2d31;
-      border: 1px solid rgba(255, 255, 255, 0.1);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-
-    .btn-upload-file svg {
-      width: 16px;
-      height: 16px;
-      color: #b5bac1;
-      transition: color 0.2s ease;
-    }
-
     .input-container .input-field {
       width: 100%;
       background: var(--surface);
-      padding: 12px 16px 12px 52px;
+      padding: 12px 16px;
       border-radius: var(--radius-m);
       border: 1px solid var(--border);
       color: var(--text);
@@ -822,14 +792,7 @@
         <div id="cooldown-timer-text" class="cooldown-text"></div>
 
         <div class="input-row">
-          <input type="file" id="file-input" style="display: none;" />
           <div class="input-wrapper">
-            <button id="upload-btn" class="btn-upload-file" title="Attach File" type="button">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
-              </svg>
-            </button>
             <input id="message-input" type="text" class="input-field" placeholder="Type a message or / for a command..." autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="send">
           </div>
           <button id="send-message-btn" class="btn-primary send-btn">Send</button>
@@ -912,6 +875,7 @@ const EX_COMMANDS = [
   { name: "/tags", desc: "View a user's tags {/tags @user}" },
   { name: "/admin", desc: "Promote a user to Admin {/admin @user}" },
   { name: "/ban", desc: "Ban a user for a duration {/ban @user time reason}" },
+  { name: "/clearstorage", desc: "Delete all chat uploads while keeping profile pictures (owner only)" },
   { name: "/deleteall", desc: "Wipe all chat messages and whispers {/deleteall}" },
   { name: "/deleteuser", desc: "Delete a user from the database {/deleteuser @user}" },
   { name: "/modlogs", desc: "View recent moderator audit events {/modlogs}" },
@@ -2465,9 +2429,6 @@ async function startChat(user) {
   const input = document.getElementById("message-input");
   const btn = document.getElementById("send-message-btn");
   const scroller = document.getElementById("message-scroller");
-  const fileInput = document.getElementById("file-input");
-  const uploadBtn = document.getElementById("upload-btn");
-
   await loadAndCacheAllUsers();
   await loadAvatarIndex();
   if (!currentUserGrade) currentUserGrade = localStorage.getItem(`carsongames-grade-${user.id}`) || "";
@@ -2525,52 +2486,6 @@ async function startChat(user) {
       }
     }
   }, 30000);
-
-  if (uploadBtn && fileInput) {
-    uploadBtn.onclick = () => fileInput.click();
-
-    fileInput.onchange = async (e) => {
-      const file = e.target.files[0];
-      if (!file || !currentUser) return;
-
-      uploadBtn.disabled = true;
-
-      try {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
-        const filePath = `${currentUser.id}/${fileName}`;
-
-        const { error: uploadError } = await backend.storage
-          .from("chat-files")
-          .upload(filePath, file);
-
-        if (uploadError) throw uploadError;
-
-        const { data } = backend.storage
-          .from("chat-files")
-          .getPublicUrl(filePath);
-
-        const publicUrl = data.publicUrl;
-
-        const { error: msgError } = await backend.from("messages").insert([{
-          text: publicUrl,
-          username: currentUsername,
-          userId: currentUser.id,
-          avatar: currentUsername ? currentUsername[0].toUpperCase() : "U",
-          role: currentUserRole
-        }]);
-
-        if (msgError) throw msgError;
-
-      } catch (err) {
-        console.error("Upload failed:", err);
-        showLocalSystemMessage("File upload failed: " + err.message, true);
-      } finally {
-        uploadBtn.disabled = false;
-        fileInput.value = "";
-      }
-    };
-  }
 
   btn.onclick = async () => {
     if (!hasAcceptedChatRules() || !currentUserGrade) {
@@ -3047,15 +2962,48 @@ async function startChat(user) {
         return;
       }
 
+      if (commandKey === "/clearstorage" && isOwnerOnly) {
+        try {
+          const storage = backend.storage.from("chat-files");
+          const { data: rootItems, error: rootError } = await storage.list("", { limit: 1000, offset: 0 });
+          if (rootError) throw rootError;
+
+          const pathsToRemove = [];
+          for (const item of rootItems || []) {
+            if (!item?.name || item.name === "avatars") continue;
+
+            // User uploads are stored inside one folder per user.
+            if (item.id === null || item.metadata === null) {
+              const { data: folderItems, error: folderError } = await storage.list(item.name, { limit: 1000, offset: 0 });
+              if (folderError) throw folderError;
+              for (const file of folderItems || []) {
+                if (file?.name) pathsToRemove.push(`${item.name}/${file.name}`);
+              }
+            } else {
+              pathsToRemove.push(item.name);
+            }
+          }
+
+          let deletedCount = 0;
+          for (let i = 0; i < pathsToRemove.length; i += 100) {
+            const { error: removeError } = await storage.remove(pathsToRemove.slice(i, i + 100));
+            if (removeError) throw removeError;
+            deletedCount += Math.min(100, pathsToRemove.length - i);
+          }
+
+          showLocalSystemMessage(`Removed ${deletedCount} uploaded file(s). Profile pictures were preserved.`, false);
+          await logModeratorEvent(`@${currentUsername} cleared chat uploads; preserved profile pictures.`);
+        } catch (err) {
+          console.error("Chat storage cleanup failed:", err);
+          showLocalSystemMessage(`Storage cleanup failed: ${err.message}`, true);
+        }
+        return;
+      }
+
       if (commandKey === "/deleteall" && isAdminPlus) {
         await backend.from("messages").delete().not('id', 'is', null);
         await backend.from("whispers").delete().not('id', 'is', null);
-        const { data: storedFiles, error: storageListError } = await backend.storage.from("chat-files").list();
-        if (!storageListError && storedFiles?.length) {
-          const { error: storageDeleteError } = await backend.storage.from("chat-files").remove(storedFiles.map(file => file.name).filter(Boolean));
-          if (storageDeleteError) console.warn("Chat storage cleanup failed:", storageDeleteError);
-        }
-        showLocalSystemMessage("Database messages and whispers wiped.", false);
+        showLocalSystemMessage("Database messages and whispers wiped. Profile pictures and storage files were not changed.", false);
         await logModeratorEvent(`@${currentUsername} used /deleteall.`);
         return;
       }
@@ -4286,7 +4234,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (scrollableContainer) return; // Allow natural scrolling inside these elements
     
     // Allow touch interactions on interactive elements (buttons, links, inputs)
-    const interactive = e.target.closest('button, a, input, [role="button"], .action-control-btn, .btn-duel-accept, .btn-duel-decline, .btn-upload-file, .vc-control-btn, .suggestion-item, .nav-auth-btn, .btn-primary');
+    const interactive = e.target.closest('button, a, input, [role="button"], .action-control-btn, .btn-duel-accept, .btn-duel-decline, .vc-control-btn, .suggestion-item, .nav-auth-btn, .btn-primary');
     if (interactive) return;
     
     e.preventDefault(); // Prevent elastic bouncing on non-scrollable backgrounds
