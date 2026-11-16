@@ -2965,7 +2965,8 @@ async function startChat(user) {
       }
 
       if (commandKey === "/poll") {
-        if (!isAdminPlus) { showLocalSystemMessage("Only Admins and Owners can create polls.", true); return; }
+        const { data: canCreatePoll } = await backend.rpc("can_chat_channel_permission", { p_channel_id: activeChatChannelId, p_permission: "create_polls" });
+        if (!isAdminPlus && !canCreatePoll) { showLocalSystemMessage("You do not have permission to create polls in this channel.", true); return; }
         const match = textToSend.match(/^\/poll\s+create\s+(\d+)(m|h|d|w)\s+(mc|sc)\s+title=(.+)$/i);
         if (!match) { showLocalSystemMessage("Syntax: /poll create 1d mc title=What is your gender?, Male, Female, Prefer not to say.", true); return; }
         const amount = Number(match[1]), unit = match[2].toLowerCase(), mode = match[3].toLowerCase();
@@ -2982,6 +2983,7 @@ async function startChat(user) {
         }
         const { data: poll, error } = await backend.from("chat_polls").insert({
           title, options, votes: {}, poll_mode: mode, created_by: currentUser.id,
+          server_id: activeChatServerId, channel_id: activeChatChannelId,
           created_by_name: currentUsername, expires_at: new Date(Date.now() + duration).toISOString()
         }).select("*").single();
         if (error) { showLocalSystemMessage("Could not create poll: " + error.message, true); return; }
@@ -3161,7 +3163,9 @@ async function startChat(user) {
           userId: null,
           role: "system",
           type: "vc_invite",
-          room_id: roomId
+          room_id: roomId,
+          server_id: activeChatServerId,
+          channel_id: activeChatChannelId
         }]);
         joinVoiceRoom(roomId);
         return;
@@ -3740,7 +3744,7 @@ async function listenForNewMessages(user) {
     renderMessages();
   }
 
-  const { data: initialPolls, error: pollsLoadError } = await backend.from("chat_polls").select("*").order("created_at", { ascending: true }).limit(200);
+  const { data: initialPolls, error: pollsLoadError } = await backend.from("chat_polls").select("*").eq("server_id",activeChatServerId).eq("channel_id",activeChatChannelId).order("created_at", { ascending: true }).limit(200);
   if (pollsLoadError) console.warn("Could not load chat polls:", pollsLoadError);
   if (initialPolls?.length) { dbPublicMessages.push(...initialPolls.map(normalizeChatPoll)); renderMessages(); }
 
@@ -3770,7 +3774,7 @@ async function listenForNewMessages(user) {
 
   await removeBackendChannel(pollsChannel);
   pollsChannel = backend.channel("chat-polls")
-    .on("postgres_changes", { event: "*", schema: "public", table: "chat_polls" }, payload => {
+    .on("postgres_changes", { event: "*", schema: "public", table: "chat_polls", filter: "channel_id=eq." + activeChatChannelId }, payload => {
       if (payload.eventType === "DELETE") dbPublicMessages = dbPublicMessages.filter(item => !(item.isPoll && item.id === payload.old.id));
       else {
         const updated = normalizeChatPoll(payload.new);
