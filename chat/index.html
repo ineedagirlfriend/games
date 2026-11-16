@@ -759,6 +759,33 @@
     .chat-main { flex:1; min-width:0; max-width:none; }
     @media(max-width:700px) { .server-sidebar{width:58px;flex-basis:58px;padding-left:5px;padding-right:5px}.server-rail-btn{width:44px;height:44px;min-height:44px}.channel-sidebar{width:155px;flex-basis:155px}.channel-row{font-size:12px;padding:10px 7px}.chat-header{padding:.8rem}.message-scroller{padding:.9rem} }
 
+  
+/* Chat in-app dialogs */
+.chat-ui-backdrop{position:fixed;inset:0;z-index:10050;background:rgba(2,4,12,.78);backdrop-filter:blur(9px);display:flex;align-items:center;justify-content:center;padding:18px}
+.chat-ui-modal{width:min(520px,100%);max-height:min(82vh,760px);display:flex;flex-direction:column;background:#111426;border:1px solid rgba(255,255,255,.12);border-radius:18px;box-shadow:0 24px 90px #000b;color:#f1f5f9;overflow:hidden}
+.chat-ui-head{padding:20px 22px 12px;border-bottom:1px solid rgba(255,255,255,.08)}
+.chat-ui-head h2{font:800 1.25rem var(--font-display);margin:0 0 5px;color:#fff}
+.chat-ui-head p{font-size:.88rem;color:#94a3b8;margin:0;line-height:1.45}
+.chat-ui-body{padding:18px 22px;overflow:auto;min-height:0}
+.chat-ui-footer{display:flex;justify-content:flex-end;gap:9px;padding:14px 20px;border-top:1px solid rgba(255,255,255,.08);background:rgba(0,0,0,.12)}
+.chat-ui-btn{border:1px solid rgba(255,255,255,.12);background:#20243a;color:#e5e7eb;border-radius:10px;padding:11px 16px;min-height:42px;font-weight:750;cursor:pointer}
+.chat-ui-btn.primary{background:var(--accent);border-color:transparent;color:#fff}
+.chat-ui-btn.danger{background:#7f1d1d;border-color:#991b1b;color:#fff}
+.chat-ui-btn:disabled{opacity:.4;cursor:not-allowed}
+.chat-ui-field{display:flex;flex-direction:column;gap:7px;margin-bottom:14px}
+.chat-ui-field label{font-size:.82rem;font-weight:800;color:#cbd5e1}
+.chat-ui-field input,.chat-ui-field textarea,.chat-ui-search{width:100%;background:#090d1b;border:1px solid #30364d;color:#f8fafc;border-radius:10px;padding:12px 13px;font-size:16px;outline:none}
+.chat-ui-field input:focus,.chat-ui-field textarea:focus,.chat-ui-search:focus{border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-glow)}
+.chat-ui-userlist{display:flex;flex-direction:column;gap:5px;max-height:44vh;overflow:auto;margin-top:12px}
+.chat-ui-user{display:flex;align-items:center;gap:11px;padding:10px;border-radius:10px;border:1px solid transparent;cursor:pointer;min-height:52px}
+.chat-ui-user:hover{background:#1b2035}
+.chat-ui-user.selected{background:rgba(108,99,255,.15);border-color:rgba(108,99,255,.55)}
+.chat-ui-user input{width:18px;height:18px;accent-color:var(--accent);flex:none}
+.chat-ui-user strong{font-size:.94rem}
+.chat-ui-user small{display:block;color:#94a3b8;font-size:.75rem;margin-top:2px}
+.chat-ui-empty{padding:22px;text-align:center;color:#94a3b8}
+@media(max-width:600px){.chat-ui-backdrop{padding:10px;align-items:flex-end}.chat-ui-modal{max-height:88vh;border-radius:18px 18px 12px 12px}.chat-ui-head{padding:17px 17px 11px}.chat-ui-body{padding:15px 17px}.chat-ui-footer{padding:12px 15px}.chat-ui-btn{flex:1}}
+
   </style>
   <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
 </head>
@@ -890,25 +917,63 @@ async function showDMList(user){
   const settings=document.getElementById("server-settings-btn");settings.textContent="DM settings";settings.onclick=()=>manageDMConversation(user);
 }
 
+
+function openChatModal(title, description, content, buttons){
+  return new Promise(resolve=>{
+    document.querySelector(".chat-ui-backdrop")?.remove();
+    const backdrop=document.createElement("div");backdrop.className="chat-ui-backdrop";
+    const modal=document.createElement("section");modal.className="chat-ui-modal";modal.setAttribute("role","dialog");modal.setAttribute("aria-modal","true");
+    const head=document.createElement("div");head.className="chat-ui-head";
+    const h=document.createElement("h2");h.textContent=title;head.appendChild(h);
+    if(description){const p=document.createElement("p");p.textContent=description;head.appendChild(p);}
+    const body=document.createElement("div");body.className="chat-ui-body";if(content)body.appendChild(content);
+    const footer=document.createElement("div");footer.className="chat-ui-footer";
+    const finish=value=>{backdrop.remove();resolve(value);};
+    for(const item of buttons){const b=document.createElement("button");b.type="button";b.className="chat-ui-btn"+(item.primary?" primary":"")+(item.danger?" danger":"");b.textContent=item.label;b.disabled=!!item.disabled;b.addEventListener("click",()=>finish(item.value));footer.appendChild(b);}
+    modal.append(head,body,footer);backdrop.appendChild(modal);
+    backdrop.addEventListener("click",e=>{if(e.target===backdrop)finish(null);});
+    document.addEventListener("keydown",function esc(e){if(e.key==="Escape"&&backdrop.isConnected){document.removeEventListener("keydown",esc);finish(null);}});
+    document.body.appendChild(backdrop);
+  });
+}
+function chatModalField(label,value="",placeholder="",type="text"){
+  const wrap=document.createElement("div");wrap.className="chat-ui-field";
+  const l=document.createElement("label");l.textContent=label;wrap.appendChild(l);
+  const input=document.createElement("input");input.type=type;input.value=value;input.placeholder=placeholder;input.autocomplete="off";wrap.appendChild(input);
+  return {wrap,input};
+}
+async function openChatUserPicker({title="Select people",description="Search for accounts and select one or more people.",excludeIds=[],users=null,confirmLabel="Continue",multi=true}={}){
+  let list=users;
+  if(!list){const result=await backend.from("users").select("id,username,role").order("username").limit(500);if(result.error){showLocalSystemMessage("Could not load users: "+result.error.message,true);return null;}list=result.data||[];}
+  const excluded=new Set(excludeIds);list=list.filter(u=>!excluded.has(u.id)).sort((a,b)=>a.username.localeCompare(b.username));
+  const root=document.createElement("div");const search=document.createElement("input");search.className="chat-ui-search";search.type="search";search.placeholder="Search by username…";search.setAttribute("aria-label","Search users");
+  const count=document.createElement("p");count.style.cssText="color:#94a3b8;font-size:.8rem;margin:10px 1px 0";const rows=document.createElement("div");rows.className="chat-ui-userlist";const selected=new Set();
+  function render(){const q=search.value.trim().toLowerCase();rows.innerHTML="";const filtered=list.filter(u=>u.username.toLowerCase().includes(q));count.textContent=selected.size+" selected · "+filtered.length+" accounts";
+    if(!filtered.length){const empty=document.createElement("div");empty.className="chat-ui-empty";empty.textContent="No matching users.";rows.appendChild(empty);}
+    for(const u of filtered){const label=document.createElement("label");label.className="chat-ui-user"+(selected.has(u.id)?" selected":"");const cb=document.createElement("input");cb.type=multi?"checkbox":"radio";cb.name="chat-user-picker";cb.checked=selected.has(u.id);const info=document.createElement("span");const strong=document.createElement("strong");strong.textContent="@"+u.username;info.appendChild(strong);if(u.role==="admin"||u.role==="owner"){const small=document.createElement("small");small.textContent=u.role.toUpperCase();info.appendChild(small);}label.append(cb,info);label.addEventListener("click",e=>{e.preventDefault();if(!multi)selected.clear();if(selected.has(u.id))selected.delete(u.id);else selected.add(u.id);render();});rows.appendChild(label);}
+  }
+  search.addEventListener("input",render);root.append(search,count,rows);render();
+  const result=await openChatModal(title,description,root,[{label:"Cancel",value:null},{label:confirmLabel,value:"select",primary:true}]);
+  return result==="select"?list.filter(u=>selected.has(u.id)):null;
+}
+
+
 async function createChatConversation(user){
-  const raw=prompt("Enter one or more usernames, separated by commas. One username creates a 1-to-1 DM; multiple create a group DM:");
-  if(!raw)return;
-  const usernames=[...new Set(raw.split(",").map(x=>x.trim().replace(/^@/,"")).filter(Boolean))];
-  if(!usernames.length)return;
-  const {data:targets,error:targetError}=await backend.from("users").select("id,username").in("username",usernames);
-  if(targetError){alert(targetError.message);return;}
-  const found=targets||[];
-  const missing=usernames.filter(n=>!found.some(u=>u.username.toLowerCase()===n.toLowerCase()));
-  if(missing.length){alert("Could not find: "+missing.join(", "));return;}
-  const others=found.filter(u=>u.id!==user.id);
-  if(!others.length){alert("Choose someone other than yourself.");return;}
-  const type=others.length===1?"direct":"group";
-  const groupName=type==="group"?(prompt("Group name (optional):")||"").trim():null;
-  const {data:convo,error}=await backend.from("chat_conversations").insert({conversation_type:type,name:groupName||null,created_by:user.id}).select("id").single();
-  if(error){alert("Could not create DM: "+error.message);return;}
-  const rows=[{conversation_id:convo.id,user_id:user.id,added_by:user.id},...others.map(u=>({conversation_id:convo.id,user_id:u.id,added_by:user.id}))];
+  const chosen=await openChatUserPicker({title:"Start a conversation",description:"Select one person for a direct message, or select multiple people to create a group DM. Use search to find accounts.",excludeIds:[user.id],confirmLabel:"Next"});
+  if(!chosen?.length)return;
+  let groupName=null;
+  if(chosen.length>1){
+    const field=chatModalField("Group name (optional)","","e.g. Game night group");
+    const action=await openChatModal("Name your group","You can change this later in group settings.",field.wrap,[{label:"Back",value:null},{label:"Create group",value:"create",primary:true}]);
+    if(action!=="create")return;
+    groupName=field.input.value.trim()||null;
+  }
+  const type=chosen.length===1?"direct":"group";
+  const {data:convo,error}=await backend.from("chat_conversations").insert({conversation_type:type,name:groupName,created_by:user.id}).select("id").single();
+  if(error){showLocalSystemMessage("Could not create DM: "+error.message,true);return;}
+  const rows=[{conversation_id:convo.id,user_id:user.id,added_by:user.id},...chosen.map(u=>({conversation_id:convo.id,user_id:u.id,added_by:user.id}))];
   const added=await backend.from("chat_conversation_members").insert(rows);
-  if(added.error){await backend.from("chat_conversations").delete().eq("id",convo.id);alert("Could not add DM members. A user may have blocked this conversation. "+added.error.message);return;}
+  if(added.error){await backend.from("chat_conversations").delete().eq("id",convo.id);showLocalSystemMessage("Could not add DM members. A user may have blocked this conversation. "+added.error.message,true);return;}
   await showDMList(user);await loadDMConversation({id:convo.id,conversation_type:type,name:groupName},user);
 }
 
@@ -939,57 +1004,76 @@ async function loadDMConversation(convo,user){
   await backend.from("chat_conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",convo.id).eq("user_id",user.id);
 }
 
+
 async function manageDMConversation(user){
   if(!activeChatConversationId){
-    const choice=prompt("Direct message settings:\n1 View blocked users\n2 Unblock a user");
-    if(!choice)return;
-    const {data:blocks}=await backend.from("chat_user_blocks").select("blocked_id").eq("blocker_id",user.id);
+    const action=await openChatModal("Direct message settings","Manage your blocked accounts.",null,[
+      {label:"Close",value:null},{label:"View blocked users",value:"view"},{label:"Unblock someone",value:"unblock",primary:true}
+    ]);
+    if(!action)return;
+    const {data:blocks,error}=await backend.from("chat_user_blocks").select("blocked_id").eq("blocker_id",user.id);
+    if(error){showLocalSystemMessage(error.message,true);return;}
     const ids=(blocks||[]).map(x=>x.blocked_id);
     const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
-    if(!profiles?.length){alert("You have no blocked users.");return;}
-    if(choice==="1"){alert("Blocked users:\n"+profiles.map(x=>"@"+x.username).join("\n"));return;}
-    if(choice==="2"){
-      const name=prompt("Username to unblock:\n"+profiles.map(x=>x.username).join("\n"));if(!name)return;
-      const target=profiles.find(x=>x.username.toLowerCase()===name.replace(/^@/,"").toLowerCase());
-      if(!target){alert("User not found in your blocked list.");return;}
-      const {error}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",target.id);
-      if(error)alert(error.message);else alert("User unblocked.");
+    if(!profiles?.length){showLocalSystemMessage("You have no blocked users.");return;}
+    if(action==="view"){
+      const box=document.createElement("div");for(const p of profiles){const row=document.createElement("div");row.className="chat-ui-user";const name=document.createElement("strong");name.textContent="@"+p.username;row.appendChild(name);box.appendChild(row);}
+      await openChatModal("Blocked users",profiles.length+" accounts are currently blocked.",box,[{label:"Done",value:true,primary:true}]);return;
     }
+    const picked=await openChatUserPicker({title:"Unblock a user",description:"Select the account you want to unblock.",users:profiles,multi:false,confirmLabel:"Unblock"});
+    if(!picked?.length)return;
+    const {error:removeError}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",picked[0].id);
+    if(removeError)showLocalSystemMessage(removeError.message,true);else showLocalSystemMessage("@"+picked[0].username+" was unblocked.");
     return;
   }
-  const action=prompt("DM options:\n1 Rename group\n2 Add members\n3 Leave conversation\n4 Block a member\n5 Unblock a user");
-  if(action==="1"&&activeDMConversation?.conversation_type==="group"){
-    const name=prompt("New group name:",activeDMConversation.name||"");if(name===null)return;
-    const {error}=await backend.from("chat_conversations").update({name:name.trim()||null,updated_at:new Date().toISOString()}).eq("id",activeChatConversationId);
-    if(error)alert(error.message);else{activeDMConversation.name=name.trim()||null;await loadDMConversation(activeDMConversation,user);}
-  }else if(action==="2"&&activeDMConversation?.conversation_type==="group"){
-    const raw=prompt("Usernames to add, separated by commas:");if(!raw)return;
-    const usernames=raw.split(",").map(x=>x.trim().replace(/^@/,"")).filter(Boolean);
-    const {data:targets}=await backend.from("users").select("id,username").in("username",usernames);
-    const existing=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",activeChatConversationId);
-    const known=new Set((existing.data||[]).map(x=>x.user_id));
-    const rows=(targets||[]).filter(x=>!known.has(x.id)).map(x=>({conversation_id:activeChatConversationId,user_id:x.id,added_by:user.id}));
-    if(!rows.length){alert("No new members to add.");return;}
-    const {error}=await backend.from("chat_conversation_members").insert(rows);if(error)alert(error.message);else await loadDMConversation(activeDMConversation,user);
-  }else if(action==="3"){
-    if(confirm("Leave this conversation?")){await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);await showDMList(user);}
-  }else if(action==="4"){
+  const isGroup=activeDMConversation?.conversation_type==="group";
+  const actions=document.createElement("div");actions.style.cssText="display:grid;gap:9px";
+  const options=[
+    ...(isGroup?[["rename","Rename group"],["add","Add people"]]:[]),
+    ["block","Block a person"],["unblock","Unblock a person"],["leave","Leave conversation"]
+  ];
+  for(const [value,label] of options){const b=document.createElement("button");b.type="button";b.className="chat-ui-btn";b.style.textAlign="left";b.textContent=label;b.dataset.action=value;actions.appendChild(b);}
+  const chosenAction=await new Promise(resolve=>{
+    openChatModal("Conversation settings",isGroup?"Manage this group DM.":"Manage this direct message.",actions,[{label:"Close",value:null}]).then(resolve);
+    actions.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{document.querySelector(".chat-ui-backdrop")?.remove();resolve(b.dataset.action);}));
+  });
+  if(!chosenAction)return;
+  if(chosenAction==="rename"){
+    const field=chatModalField("Group name",activeDMConversation.name||"","Group name");
+    const save=await openChatModal("Rename group","Leave blank to use the member names.",field.wrap,[{label:"Cancel",value:null},{label:"Save",value:"save",primary:true}]);
+    if(save!=="save")return;
+    const name=field.input.value.trim()||null;
+    const {error}=await backend.from("chat_conversations").update({name,updated_at:new Date().toISOString()}).eq("id",activeChatConversationId);
+    if(error)showLocalSystemMessage(error.message,true);else{activeDMConversation.name=name;await loadDMConversation(activeDMConversation,user);}
+  }else if(chosenAction==="add"){
+    const {data:members,error}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",activeChatConversationId);
+    if(error){showLocalSystemMessage(error.message,true);return;}
+    const picked=await openChatUserPicker({title:"Add people",description:"Choose one or more accounts to add to this group.",excludeIds:[...(members||[]).map(x=>x.user_id)],confirmLabel:"Add selected"});
+    if(!picked?.length)return;
+    const rows=picked.map(x=>({conversation_id:activeChatConversationId,user_id:x.id,added_by:user.id}));
+    const {error:addError}=await backend.from("chat_conversation_members").insert(rows);
+    if(addError)showLocalSystemMessage(addError.message,true);else await loadDMConversation(activeDMConversation,user);
+  }else if(chosenAction==="leave"){
+    const yes=await openChatModal("Leave conversation?","You will no longer see this conversation in your DM list.",null,[{label:"Stay",value:false},{label:"Leave",value:true,danger:true}]);
+    if(!yes)return;
+    const {error}=await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);
+    if(error)showLocalSystemMessage(error.message,true);else await showDMList(user);
+  }else if(chosenAction==="block"){
     const {data:members}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",activeChatConversationId);
     const ids=(members||[]).map(x=>x.user_id).filter(id=>id!==user.id);
     const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
-    const targetName=prompt("Username to block: "+(profiles||[]).map(x=>x.username).join(", "));if(!targetName)return;
-    const target=(profiles||[]).find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());if(!target){alert("Member not found.");return;}
-    const {error}=await backend.from("chat_user_blocks").insert({blocker_id:user.id,blocked_id:target.id});if(error)alert(error.message);else{await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);await showDMList(user);alert("User blocked.");}
-  }else if(action==="5"){
+    const picked=await openChatUserPicker({title:"Block a person",description:"Choose a member of this conversation to block.",users:profiles||[],multi:false,confirmLabel:"Block"});
+    if(!picked?.length)return;
+    const {error}=await backend.from("chat_user_blocks").insert({blocker_id:user.id,blocked_id:picked[0].id});
+    if(error)showLocalSystemMessage(error.message,true);else{await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);await showDMList(user);showLocalSystemMessage("@"+picked[0].username+" was blocked.");}
+  }else if(chosenAction==="unblock"){
     const {data:blocks}=await backend.from("chat_user_blocks").select("blocked_id").eq("blocker_id",user.id);
-    const ids=(blocks||[]).map(x=>x.blocked_id);
-    const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
-    if(!profiles?.length){alert("You have no blocked users.");return;}
-    const targetName=prompt("Choose a user to unblock:\n"+profiles.map(x=>x.username).join("\n"));if(!targetName)return;
-    const target=profiles.find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());
-    if(!target){alert("User not found in your blocked list.");return;}
-    const {error}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",target.id);
-    if(error)alert(error.message);else alert("User unblocked.");
+    const ids=(blocks||[]).map(x=>x.blocked_id);const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
+    if(!profiles?.length){showLocalSystemMessage("You have no blocked users.");return;}
+    const picked=await openChatUserPicker({title:"Unblock a person",description:"Choose an account to unblock.",users:profiles,multi:false,confirmLabel:"Unblock"});
+    if(!picked?.length)return;
+    const {error}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",picked[0].id);
+    if(error)showLocalSystemMessage(error.message,true);else showLocalSystemMessage("@"+picked[0].username+" was unblocked.");
   }
 }
 
