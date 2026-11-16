@@ -24,6 +24,11 @@
     .auth-actions button:hover { border-color: var(--accent); transform: translateY(-1px); }
     .forgot-link { display:block; justify-self:end; color:var(--text-muted); font-size:.9rem; text-decoration:none; margin-top:-.35rem; }
     .forgot-link:hover { color:var(--accent); text-decoration:underline; }
+    .auth-choice { display: grid; gap: 0.9rem; }
+    .auth-choice button { width: 100%; padding: 15px 18px; border-radius: 14px; font: inherit; font-weight: 650; font-size: 1rem; cursor: pointer; transition: all 0.2s var(--ease); }
+    .auth-choice .choice-primary { border: 1px solid var(--accent); background: var(--accent); color: white; }
+    .auth-choice .choice-secondary { border: 1px solid var(--border); background: var(--surface); color: var(--text); }
+    .auth-choice button:hover { transform: translateY(-1px); filter: brightness(1.08); }
     .hidden { display: none !important; }
   </style>
   <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
@@ -37,7 +42,12 @@
     <h1 id="auth-title">Sign in</h1>
   </div>
 
-  <form id="auth-form" class="auth-form">
+  <div id="auth-choice" class="auth-choice">
+    <button type="button" id="choose-signin" class="choice-primary">Sign in</button>
+    <button type="button" id="choose-signup" class="choice-secondary">Create new account</button>
+  </div>
+
+  <form id="auth-form" class="auth-form hidden">
 
     <div id="name-field" class="input-group">
       <label>Username</label>
@@ -76,6 +86,9 @@ const form = document.getElementById("auth-form");
 const title = document.getElementById("auth-title");
 const toggle = document.getElementById("toggle-mode");
 const submitBtn = document.getElementById("auth-submit");
+const authChoice = document.getElementById("auth-choice");
+const chooseSignin = document.getElementById("choose-signin");
+const chooseSignup = document.getElementById("choose-signup");
 
 const password = document.getElementById("password");
 const nameInput = document.getElementById("name");
@@ -141,9 +154,24 @@ async function signIn(email, passwordVal) {
   return true;
 }
 
+/* INITIAL AUTH CHOICES */
+function showAuthForm(createAccount) {
+  signUpMode = createAccount;
+  authChoice.classList.add("hidden");
+  form.classList.remove("hidden");
+  updateAuthMode();
+}
+
+chooseSignin.addEventListener("click", () => showAuthForm(false));
+chooseSignup.addEventListener("click", () => showAuthForm(true));
+
 /* TOGGLE MODE */
 toggle.addEventListener("click", () => {
   signUpMode = !signUpMode;
+  updateAuthMode();
+});
+
+function updateAuthMode() {
 
   title.textContent = signUpMode ? "Create account" : "Sign in";
   submitBtn.textContent = signUpMode ? "Create account" : "Sign in";
