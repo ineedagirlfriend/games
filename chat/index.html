@@ -1269,50 +1269,35 @@ async function loadAndCacheAllUsers() {
 async function loadAvatarIndex() {
   avatarIndexByUserId = new Map();
 
-  // Cache the small avatar filename index for this browser session. This avoids
-  // repeatedly listing the entire Storage folder while preserving the existing
-  // avatar behavior and URLs. The actual image bytes are still handled by the
-  // browser/Storage cache.
-  const cacheKey = "carsongames-avatar-index-v2";
-  try {
-    const cached = sessionStorage.getItem(cacheKey);
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) {
-        avatarIndexByUserId = new Map(parsed);
-        return;
-      }
-    }
-  } catch (_) {}
-
+  // Always fetch the current Storage listing. A sessionStorage copy becomes
+  // stale when a user changes their profile picture in another page/tab.
   try {
     const { data, error } = await backend.storage.from("chat-files").list("avatars", {
       limit: 1000,
       sortBy: { column: "name", order: "desc" }
     });
 
-    if (error || !data) return;
+    if (error || !data) {
+      console.error("Could not refresh profile picture index:", error);
+      return;
+    }
 
     const latestByUser = new Map();
-
     data.forEach(item => {
       if (!item.name) return;
-      const match = item.name.match(/^(.+?)__(\d+)\.(jpg|jpeg|png|webp)$/i);
+      const match = item.name.match(/^(.+?)__(\\d+)\\.(jpg|jpeg|png|webp)$/i);
       if (!match) return;
 
       const userId = match[1];
       const timestamp = parseInt(match[2], 10) || 0;
       const existing = latestByUser.get(userId);
-
       if (!existing || timestamp > existing.timestamp) {
         latestByUser.set(userId, { fileName: item.name, timestamp });
       }
     });
 
     avatarIndexByUserId = latestByUser;
-    try {
-      sessionStorage.setItem(cacheKey, JSON.stringify([...latestByUser.entries()]));
-    } catch (_) {}
+    avatarUrlCache.clear();
   } catch (err) {
     console.error("Failed to load avatar storage index:", err);
     avatarIndexByUserId = new Map();
