@@ -934,19 +934,35 @@ async function loadServerDM(user){
     .contains("participants",[user.id])
     .order("timestamp",{ascending:true}).limit(300);
   if(error){uiAlert("Could not load your Server DM: "+error.message);return;}
-  const relevant=(items||[]).filter(m=>m.isOmoggleInvite===true||m.type==="mod_log"||m.type==="vc_invite"||m.type==="server_notice");
+  const relevant=(items||[]).filter(m=>m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice");
   const serverIds=[...new Set(relevant.map(m=>m.server_id).filter(Boolean))];
   const {data:servers}=serverIds.length?await backend.from("chat_servers").select("id,name").in("id",serverIds):{data:[]};
   const serverNames=new Map((servers||[]).map(x=>[x.id,x.name]));
   dbPublicMessages=relevant.map(m=>({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"?"Server":m.username||"Server",text:(m.type==="mod_log"&&m.server_id?"["+ (serverNames.get(m.server_id)||"Server") +" staff log] ":"")+m.text,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()}));
   renderMessages(true);
   dmRealtimeChannel=backend.channel("server-dm:"+user.id)
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:"whispers"},payload=>{
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"whispers"},async payload=>{
       const m=payload.new;
-      if(!m.participants?.includes(user.id)||!(m.isOmoggleInvite===true||m.type==="mod_log"||m.type==="vc_invite"||m.type==="server_notice"))return;
+      if(!m.participants?.includes(user.id)||!(m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice"))return;
       if(dbPublicMessages.some(x=>x.id===m.id))return;
-      dbPublicMessages.push({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"?"Server":m.username||"Server",timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()});
+      let text=m.text||"";
+      if(m.type==="mod_log"&&m.server_id){const {data:server}=await backend.from("chat_servers").select("name").eq("id",m.server_id).maybeSingle();text="["+(server?.name||"Server")+" staff log] "+text;}
+      dbPublicMessages.push({...m,text,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"?"Server":m.username||"Server",timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()});
       renderMessages(true);
+    })
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"whispers"},payload=>{
+      const m=payload.new;if(!m.participants?.includes(user.id))return;
+      const idx=dbPublicMessages.findIndex(x=>x.id===m.id);
+      if(idx>=0)dbPublicMessages[idx]={...dbPublicMessages[idx],...m,isWhisper:true,isSystemMessage:true,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()};
+      if(m.isOmoggleInvite&&m.inviteStatus==="accepted"&&!processedOmoggleRedirects.has(m.id)){
+        processedOmoggleRedirects.add(m.id);sessionStorage.setItem("omoggle_redirected_"+m.id,"true");
+        const roleIdentityString=user.id===m.senderId?"host":"guest";
+        setTimeout(()=>{if(!window.location.pathname.includes("/omoggle/"))window.location.href="../omoggle/?room="+m.id+"&role="+roleIdentityString+"&hostName="+encodeURIComponent(m.username||"Player");},800);
+      }
+      renderMessages();
+    })
+    .on("postgres_changes",{event:"DELETE",schema:"public",table:"whispers"},payload=>{
+      dbPublicMessages=dbPublicMessages.filter(x=>x.id!==payload.old.id);renderMessages();
     }).subscribe();
 }
 
@@ -1169,7 +1185,7 @@ async function loadChatNavigation(user) {
     b.title=server.name; b.setAttribute("aria-label",server.name);
     if(server.icon_url) b.innerHTML='<img alt="" src="'+escapeHtml(server.icon_url)+'">';
     else b.textContent=server.is_system?"NA":server.name.slice(0,2).toUpperCase();
-    b.addEventListener("click",async()=>{activeChatServerId=server.id;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);});
+    b.addEventListener("click",async()=>{clearEphemeralSystemMessages();isDMView=false;isServerDMView=false;activeChatServerId=server.id;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);});
     rail.appendChild(b);
   }
   document.getElementById("create-server-btn")?.addEventListener("click",()=>createOrJoinChatServer(user));
@@ -1211,7 +1227,7 @@ async function switchChatChannel(id,user){
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
   setActiveChatTitle(activeChatChannels.find(c=>c.id===id));
   document.querySelectorAll(".channel-row").forEach(el=>el.classList.toggle("active",el.dataset.channelId===id));
-  dbPublicMessages=[]; dbHistoricalMessages=[]; historyPageOffset=0; allMessagesLoaded=false;
+  dbPublicMessages=[]; dbPrivateMessages=[]; dbHistoricalMessages=[]; historyPageOffset=0; allMessagesLoaded=false;
   await listenForNewMessages(user||currentUser);
 }
 
@@ -2111,7 +2127,7 @@ async function logModeratorEvent(text, serverId = activeChatServerId) {
   if(!moderatorIds.includes(currentUser.id))moderatorIds.push(currentUser.id);
   const {error}=await backend.from("whispers").insert([{
     text,username:"Server",senderId:currentUser.id,participants:[...new Set(moderatorIds)],
-    type:"mod_log",role:"system",server_id:serverId,channel_id:null
+    type:"mod_log",role:"system",server_id:serverId
   }]);
   if(error)console.warn("Server moderator DM log write failed:",error);
 }
