@@ -1012,6 +1012,8 @@ async function loadChatNavigation(user) {
     activeChatChannelId=(activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id||null;
   }
   setActiveChatTitle(activeChatChannels.find(c=>c.id===activeChatChannelId));
+  document.getElementById("create-channel-btn").textContent="+ Channel";
+  document.getElementById("server-settings-btn").textContent="Settings";
   document.getElementById("create-channel-btn").onclick=()=>createChatChannel(user);
   document.getElementById("server-settings-btn").onclick=()=>manageChatServer(user);
 }
