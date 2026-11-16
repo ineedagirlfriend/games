@@ -4055,6 +4055,8 @@ async function startChat(user) {
           avatar: currentUsername && currentUsername.length > 0 ? currentUsername[0].toUpperCase() : "U",
           role: currentUserRole,
           clientSideId: clientSideId,
+          server_id: activeChatServerId,
+          channel_id: activeChatChannelId,
           ...replyMetadata
         }]);
         if (error) throw error;
