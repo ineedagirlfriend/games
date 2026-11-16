@@ -592,8 +592,8 @@
         <form id="username-form" class="settings-section" autocomplete="off">
           <h3>Change Username</h3>
           <div class="form-group">
-            <label for="username">New Username</label>
-            <input type="text" id="username" name="new-username-field" value="${profile?.username || ''}" autocomplete="off" required>
+            <label for="profile-username-setting">New Username</label>
+            <input type="text" id="profile-username-setting" name="profile-label-edit-field" value="${profile?.username || ''}" autocomplete="off" autocapitalize="off" spellcheck="false" readonly onpointerdown="this.removeAttribute(\'readonly\')" onfocus="this.removeAttribute(\'readonly\')" required>
           </div>
           <div class="btn-container"><button type="submit" class="btn-primary">Update Username</button></div>
           <div id="username-msg" class="status-msg"></div>
@@ -1165,7 +1165,7 @@
       // Username Form Submission
       document.getElementById('username-form').onsubmit = async (e) => {
         e.preventDefault();
-        const newUsername = document.getElementById('username').value.trim();
+        const newUsername = document.getElementById('profile-username-setting').value.trim();
         const msgEl = document.getElementById('username-msg');
         try {
           const { error } = await backend
