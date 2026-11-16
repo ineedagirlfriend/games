@@ -1016,7 +1016,7 @@ async function loadChatNavigation(user) {
     b.addEventListener("click",()=>switchChatChannel(channel.id,user));list.appendChild(b);
   };
   for(const category of activeChatCategories){
-    const heading=document.createElement("div");heading.className="channel-category-heading";heading.textContent=category.name;list.appendChild(heading);
+    const heading=document.createElement("div");heading.className="channel-category-heading";heading.textContent=category.name;heading.title="Tap to manage category";heading.addEventListener("click",()=>manageChatCategory(category,user));list.appendChild(heading);
     activeChatChannels.filter(c=>c.category_id===category.id).forEach(appendChannel);
   }
   const uncategorized=activeChatChannels.filter(c=>!c.category_id);
@@ -1071,6 +1071,22 @@ async function createChatServer(user){
   activeChatServerId=server.id;activeChatChannelId=channel.data.id;await loadChatNavigation(user);await switchChatChannel(channel.data.id,user);
 }
 
+
+
+async function manageChatCategory(category,user){
+  const action=prompt("Category — "+category.name+"\n1 Rename\n2 Delete");
+  if(action==="1"){
+    const name=prompt("New category name:",category.name);if(!name||!name.trim())return;
+    const {error}=await backend.from("chat_categories").update({name:name.trim()}).eq("id",category.id);
+    if(error)alert(error.message);else await loadChatNavigation(user);
+  }else if(action==="2"){
+    if(!confirm("Delete category "+category.name+"? Its channels will remain uncategorized."))return;
+    const moved=await backend.from("chat_channels").update({category_id:null}).eq("category_id",category.id);
+    if(moved.error){alert(moved.error.message);return;}
+    const {error}=await backend.from("chat_categories").delete().eq("id",category.id);
+    if(error)alert(error.message);else await loadChatNavigation(user);
+  }
+}
 
 async function createChatCategory(user){
   const name=prompt("Category name (1–80 characters):");if(!name||!name.trim())return;
