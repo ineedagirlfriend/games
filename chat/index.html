@@ -877,10 +877,11 @@ let isDMView = false;
 let activeChatConversationId = null;
 let activeDMConversation = null;
 let dmRealtimeChannel = null;
+let isServerDMView = false;
 
 
 async function showDMList(user){
-  isDMView=true;activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
+  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
   await removeBackendChannel(pollsChannel);pollsChannel=null;
@@ -892,6 +893,7 @@ async function showDMList(user){
   rail.querySelectorAll(".server-rail-btn").forEach(b=>b.classList.remove("active"));
   document.getElementById("open-dms-btn")?.classList.add("active");
   const list=document.getElementById("channel-list");list.innerHTML="";
+  const inbox=document.createElement("button");inbox.className="channel-row";inbox.textContent="✉ Server DM · Requests & alerts";inbox.addEventListener("click",()=>loadServerDM(user));list.appendChild(inbox);
   const {data:links,error}=await backend.from("chat_conversation_members").select("conversation_id").eq("user_id",user.id);
   if(error){console.error("DM list:",error);return;}
   const ids=[...new Set((links||[]).map(x=>x.conversation_id))];
@@ -915,6 +917,37 @@ async function showDMList(user){
   document.getElementById("create-category-btn").style.display="none";
   document.getElementById("channel-settings-btn").style.display="none";
   const settings=document.getElementById("server-settings-btn");settings.textContent="DM settings";settings.onclick=()=>manageDMConversation(user);
+}
+
+
+async function loadServerDM(user){
+  isDMView=true;isServerDMView=true;activeChatConversationId=null;activeDMConversation=null;
+  await removeBackendChannel(publicChannel);publicChannel=null;
+  await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
+  await removeBackendChannel(pollsChannel);pollsChannel=null;
+  await removeBackendChannel(privateChannel);privateChannel=null;
+  dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];clearEphemeralSystemMessages();
+  document.querySelector(".channel-title strong").textContent="Server DM";
+  document.getElementById("active-server-name").textContent="Server DM";
+  const {data:items,error}=await backend.from("whispers")
+    .select("id,text,username,userId,senderId,avatar,role,timestamp,type,room_id,participants,isOmoggleInvite,inviteStatus,server_id,channel_id")
+    .contains("participants",[user.id])
+    .order("timestamp",{ascending:true}).limit(300);
+  if(error){uiAlert("Could not load your Server DM: "+error.message);return;}
+  const relevant=(items||[]).filter(m=>m.isOmoggleInvite===true||m.type==="mod_log"||m.type==="vc_invite"||m.type==="server_notice");
+  const serverIds=[...new Set(relevant.map(m=>m.server_id).filter(Boolean))];
+  const {data:servers}=serverIds.length?await backend.from("chat_servers").select("id,name").in("id",serverIds):{data:[]};
+  const serverNames=new Map((servers||[]).map(x=>[x.id,x.name]));
+  dbPublicMessages=relevant.map(m=>({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"?"Server":m.username||"Server",text:(m.type==="mod_log"&&m.server_id?"["+ (serverNames.get(m.server_id)||"Server") +" staff log] ":"")+m.text,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()}));
+  renderMessages(true);
+  dmRealtimeChannel=backend.channel("server-dm:"+user.id)
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"whispers"},payload=>{
+      const m=payload.new;
+      if(!m.participants?.includes(user.id)||!(m.isOmoggleInvite===true||m.type==="mod_log"||m.type==="vc_invite"||m.type==="server_notice"))return;
+      if(dbPublicMessages.some(x=>x.id===m.id))return;
+      dbPublicMessages.push({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"?"Server":m.username||"Server",timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()});
+      renderMessages(true);
+    }).subscribe();
 }
 
 
@@ -1010,7 +1043,7 @@ async function createChatConversation(user){
 }
 
 async function loadDMConversation(convo,user){
-  isDMView=true;activeChatConversationId=convo.id;activeDMConversation=convo;
+  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatConversationId=convo.id;activeDMConversation=convo;
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
   await removeBackendChannel(pollsChannel);pollsChannel=null;
@@ -1175,7 +1208,7 @@ async function loadChatNavigation(user) {
 }
 
 async function switchChatChannel(id,user){
-  activeChatChannelId=id;
+  isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
   setActiveChatTitle(activeChatChannels.find(c=>c.id===id));
   document.querySelectorAll(".channel-row").forEach(el=>el.classList.toggle("active",el.dataset.channelId===id));
   dbPublicMessages=[]; dbHistoricalMessages=[]; historyPageOffset=0; allMessagesLoaded=false;
@@ -2063,27 +2096,24 @@ function showSchoolPicker(force = false) {
   });
 }
 
-async function logModeratorEvent(text) {
-  if (!currentUser || (currentUserRole !== "admin" && currentUserRole !== "owner")) return;
-
-  const moderatorIds = allRegisteredUsers
-    .filter(u => u.role === "admin" || u.role === "owner")
-    .map(u => u.id)
-    .filter(Boolean);
-
-  if (!moderatorIds.includes(currentUser.id)) moderatorIds.push(currentUser.id);
-  if (moderatorIds.length === 0) return;
-
-  const { error } = await backend.from("whispers").insert([{
-    text,
-    username: "Server",
-    senderId: currentUser.id,
-    participants: [...new Set(moderatorIds)],
-    type: "mod_log",
-    role: "system"
+async function logModeratorEvent(text, serverId = activeChatServerId) {
+  if (!currentUser || !serverId || (currentUserRole !== "admin" && currentUserRole !== "owner")) return;
+  const [{data:members,error:memberError},{data:server,error:serverError}] = await Promise.all([
+    backend.from("chat_server_members").select("user_id").eq("server_id",serverId),
+    backend.from("chat_servers").select("owner_id,name").eq("id",serverId).maybeSingle()
+  ]);
+  if(memberError||serverError){console.warn("Could not resolve server moderators:",memberError||serverError);return;}
+  const memberIds=[...new Set((members||[]).map(x=>x.user_id).filter(Boolean))];
+  const {data:profiles,error:profileError}=memberIds.length?await backend.from("users").select("id,role").in("id",memberIds):{data:[],error:null};
+  if(profileError){console.warn("Could not load server moderators:",profileError);return;}
+  const moderatorIds=(profiles||[]).filter(p=>p.role==="admin"||p.role==="owner"||p.id===server?.owner_id).map(p=>p.id);
+  if(server?.owner_id&&!moderatorIds.includes(server.owner_id))moderatorIds.push(server.owner_id);
+  if(!moderatorIds.includes(currentUser.id))moderatorIds.push(currentUser.id);
+  const {error}=await backend.from("whispers").insert([{
+    text,username:"Server",senderId:currentUser.id,participants:[...new Set(moderatorIds)],
+    type:"mod_log",role:"system",server_id:serverId,channel_id:null
   }]);
-
-  if (error) console.warn("Moderator log write failed:", error);
+  if(error)console.warn("Server moderator DM log write failed:",error);
 }
 
 function updateAuthButtonState(isLoggedIn) {
@@ -3906,8 +3936,6 @@ async function startChat(user) {
           avatar: currentUsername && currentUsername.length > 0 ? currentUsername[0].toUpperCase() : "U",
           participants: participantIds,
           role: currentUserRole,
-          server_id: activeChatServerId,
-          channel_id: activeChatChannelId,
           clientSideId: clientSideId,
           ...replyMetadata
         };
@@ -4017,15 +4045,7 @@ async function listenForNewMessages(user) {
     renderMessages();
   }
 
-  const { data: initialPrivate } = await backend
-    .from("whispers")
-    .select("id, text, username, userId, senderId, avatar, role, timestamp, type, room_id, participants, isOmoggleInvite, inviteStatus, reply_to_id, reply_to_collection, reply_to_username, reply_to_text, forward_of_id, forward_of_collection, forward_of_text, clientSideId")
-    .contains("participants", [user.id]);
-
-  if (initialPrivate) {
-    dbPrivateMessages = initialPrivate.map(m => ({ ...m, isWhisper: true, isSystemMessage: m.role === "system" || m.isOmoggleInvite === true }));
-    renderMessages();
-  }
+  dbPrivateMessages = [];
 
   const { data: initialPolls, error: pollsLoadError } = await backend.from("chat_polls").select("*").eq("server_id",activeChatServerId).eq("channel_id",activeChatChannelId).order("created_at", { ascending: true }).limit(200);
   if (pollsLoadError) console.warn("Could not load chat polls:", pollsLoadError);
@@ -4069,46 +4089,6 @@ async function listenForNewMessages(user) {
 
   await removeBackendChannel(privateChannel);
   privateChannel = null;
-  privateChannel = backend
-    .channel('public:whispers')
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'whispers' }, payload => {
-      const newWhisper = payload.new;
-      if (newWhisper.participants && newWhisper.participants.includes(user.id)) {
-        const incomingMessage = { ...newWhisper, isWhisper: true, isSystemMessage: newWhisper.isOmoggleInvite === true || newWhisper.type === 'vc_invite' || newWhisper.role === 'system' };
-        maybeNotifyForMention(incomingMessage);
-        dbPrivateMessages.push(incomingMessage);
-        renderMessages(true);
-      }
-    })
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'whispers' }, payload => {
-      const updatedWhisper = payload.new;
-      if (updatedWhisper.participants && updatedWhisper.participants.includes(user.id)) {
-        const idx = dbPrivateMessages.findIndex(m => m.id === updatedWhisper.id);
-        if (idx !== -1) {
-          dbPrivateMessages[idx] = { ...updatedWhisper, isWhisper: true, isSystemMessage: updatedWhisper.isOmoggleInvite === true || updatedWhisper.type === 'vc_invite' || updatedWhisper.role === 'system' };
-
-          if (updatedWhisper.isOmoggleInvite && updatedWhisper.inviteStatus === "accepted") {
-            const sessionRedirectToken = `omoggle_redirected_${updatedWhisper.id}`;
-            if (!processedOmoggleRedirects.has(updatedWhisper.id)) {
-              processedOmoggleRedirects.add(updatedWhisper.id);
-              sessionStorage.setItem(sessionRedirectToken, "true");
-
-              const roleIdentityString = user.id === updatedWhisper.senderId ? "host" : "guest";
-              setTimeout(() => {
-                if (window.location.pathname.includes('/omoggle/')) return;
-                window.location.href = `../omoggle/?room=${updatedWhisper.id}&role=${roleIdentityString}&hostName=${encodeURIComponent(updatedWhisper.username)}`;
-              }, 800);
-            }
-          }
-          renderMessages();
-        }
-      }
-    })
-    .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'whispers' }, payload => {
-      dbPrivateMessages = dbPrivateMessages.filter(m => m.id !== payload.old.id);
-      renderMessages();
-    })
-    .subscribe();
 }
 
 async function jumpToMessage(collection, messageId) {
