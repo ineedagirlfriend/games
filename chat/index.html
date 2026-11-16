@@ -1318,7 +1318,7 @@ async function createOrJoinChatServer(user){
     const code=await uiPrompt("Enter server invite code:");if(!code)return;
     const {data,error}=await backend.rpc("join_chat_server",{p_code:code.trim()});
     if(error){uiAlert(error.message);return;}
-    activeChatServerId=data;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);return;
+    activeChatServerId=data;activeChatChannelId=null;forceChatServerRailRefresh=true;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);return;
   }
   if(choice==="1")return createChatServer(user);
 }
@@ -1329,7 +1329,7 @@ async function createChatServer(user){
   const {data,error}=await backend.rpc("create_chat_server",{p_name:name.trim(),p_description:description.trim()});
   if(error||!data?.server_id||!data?.channel_id){uiAlert(error?.message||"Could not create server.");return;}
   activeChatServerId=data.server_id;activeChatChannelId=data.channel_id;
-  await loadChatNavigation(user);await switchChatChannel(data.channel_id,user);
+  forceChatServerRailRefresh=true;await loadChatNavigation(user);await switchChatChannel(data.channel_id,user);
 }
 
 
@@ -1556,7 +1556,7 @@ async function manageChatServer(user){
   }else if(action==="6"){
     if(activeChatServer.is_system){uiAlert("You cannot leave the main NA server.");return;}
     if(activeChatServer.owner_id===user.id){uiAlert("Transfer ownership or delete the server before leaving it.");return;}
-    if(await uiConfirm("Leave this server?")){await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",user.id);activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
+    if(await uiConfirm("Leave this server?")){await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",user.id);activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";forceChatServerRailRefresh=true;await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
   }else if(action==="7"){
     if(activeChatServer.owner_id!==user.id){uiAlert("Only the server owner can delete this server.");return;}
     if(await uiConfirm("Permanently delete this server and its messages?")){const result=await backend.from("chat_servers").delete().eq("id",activeChatServerId);if(result.error){uiAlert(result.error.message);return;}activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
