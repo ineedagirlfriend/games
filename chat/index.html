@@ -206,7 +206,15 @@
       .action-control-btn:hover .tray-icon-img {
         opacity: 1;
       }
-      .suggestion-item:hover {
+      .mention-role-label, .mention-self-label {
+      display: inline-flex; align-items: center; margin-left: 6px; padding: 2px 6px;
+      border-radius: 5px; font-size: 0.62rem; font-weight: 800; letter-spacing: .04em;
+      vertical-align: middle;
+    }
+    .mention-role-label { color: #fbbf24; background: rgba(251,191,36,.12); }
+    .mention-self-label { color: #a5b4fc; background: rgba(108,99,255,.16); }
+
+    .suggestion-item:hover {
         background: var(--card-hover);
         color: #fff;
       }
@@ -3100,6 +3108,14 @@ async function startChat(user) {
       return;
     }
 
+    if (isOmoggleCommand && segments[1]) {
+      const firstTarget = segments[1].replace(/^@/, "").replace(/[.,!?;:]+$/, "").toLowerCase();
+      if (firstTarget === currentUsername.toLowerCase()) {
+        showLocalSystemMessage("You can't send an Omoggle challenge to yourself. Choose another user.", true);
+        return;
+      }
+    }
+
     if (isWhisperCommand || isOmoggleCommand) {
       let i = 1;
       while (i < segments.length) {
@@ -3926,9 +3942,22 @@ function getMentionSuggestionItems(searchStr = "") {
     ] : [])
   ].filter(item => item.username.startsWith(normalizedSearch));
 
+  // Include every account, including the signed-in user and privileged accounts.
+  // This lets users mention themselves, admins, and owners consistently in
+  // normal messages and target-taking commands such as /omoggle and /w.
   const filteredUsers = localUsersCache
-    .filter(u => u.username.toLowerCase().startsWith(normalizedSearch) && u.username.toLowerCase() !== currentUsername.toLowerCase())
-    .map(u => ({ ...u, isSpecial: false }));
+    .filter(u => u.username && u.username.toLowerCase().startsWith(normalizedSearch))
+    .map(u => ({
+      ...u,
+      isSpecial: false,
+      isSelf: !!currentUser && u.id === currentUser.id
+    }))
+    .sort((a, b) => {
+      const roleOrder = role => role === "owner" ? 0 : role === "admin" ? 1 : 2;
+      return roleOrder(a.role) - roleOrder(b.role) ||
+        Number(!!b.isSelf) - Number(!!a.isSelf) ||
+        a.username.localeCompare(b.username);
+    });
 
   return [...specialItems, ...filteredUsers];
 }
@@ -4123,10 +4152,15 @@ function showMentions(users, type) {
   users.forEach((u, idx) => {
     const div = document.createElement("div");
     div.className = "suggestion-item" + (idx === 0 ? " selected" : "");
-    const displayName = u.isSpecial ? `@${u.username}` : `@${u.username}`;
+    const displayName = `@${u.username}`;
+    const roleLabel = !u.isSpecial && (u.role === "owner" || u.role === "admin")
+      ? `<span class="mention-role-label">${u.role.toUpperCase()}</span>`
+      : "";
+    const selfLabel = u.isSelf ? `<span class="mention-self-label">YOU</span>` : "";
     div.innerHTML = `
       <div class="item-avatar"></div>
       <strong>${displayName}</strong>
+      ${selfLabel}${roleLabel}
     `;
 
     if (!u.isSpecial) {
