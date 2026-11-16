@@ -1332,7 +1332,14 @@ async function createChatChannel(user){
     server_id:activeChatServerId,category_id:categoryId,name:name.trim().toLowerCase().replace(/\s+/g,"-"),
     topic:topic.trim(),channel_type:"text",position:activeChatChannels.length,is_private:isPrivate,slowmode_seconds:slow
   }).select("id").single();
-  if(error){uiAlert("Could not create channel: "+error.message);return;}
+  if(error){
+    if(error.code==="42501"&&activeChatServer?.is_system){
+      uiAlert("Only NA chat staff can create channels in the global NA server. You can create channels freely in servers you own.");
+    }else{
+      uiAlert("Could not create channel: "+error.message);
+    }
+    return;
+  }
   if(isPrivate){
     const usernames=await uiPrompt("Usernames to allow in this private channel, separated by commas (optional):")||"";
     const names=usernames.split(",").map(x=>x.trim().replace(/^@/,"")).filter(Boolean);
