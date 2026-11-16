@@ -635,6 +635,16 @@
           <div id="school-msg" class="status-msg"></div>
         </form>
 
+        <form id="email-form" class="settings-section" autocomplete="off">
+          <h3>Change Email Address</h3>
+          <div class="form-group">
+            <label for="new-email">New Email Address</label>
+            <input type="email" id="new-email" name="user-new-email" placeholder="Enter new email address" autocomplete="email" required>
+          </div>
+          <div class="btn-container"><button type="submit" class="btn-primary">Update Email</button></div>
+          <div id="email-msg" class="status-msg"></div>
+        </form>
+
         <form id="password-form" class="settings-section" autocomplete="off">
           <h3>Change Password</h3>
           <div class="form-group">
@@ -1231,6 +1241,39 @@
           try { await backend.auth.signOut(); } catch {}
           window.location.replace('../login/?deleted=1');
         } catch (err) { deleteMsg.textContent = err.message || 'Account deletion failed. Please try again.'; deleteMsg.className = 'status-msg status-error'; deleteConfirmBtn.disabled = false; deleteCancelBtn.disabled = false; }
+      };
+
+      // Email changes use the signed-in Supabase session; no current-password field is requested.
+      document.getElementById('email-form').onsubmit = async (e) => {
+        e.preventDefault();
+        const newEmail = document.getElementById('new-email').value.trim();
+        const msgEl = document.getElementById('email-msg');
+
+        if (!newEmail || newEmail.toLowerCase() === String(user.email || '').toLowerCase()) {
+          msgEl.textContent = 'Enter a different email address.';
+          msgEl.className = 'status-msg status-error';
+          return;
+        }
+
+        try {
+          msgEl.textContent = 'Updating email address...';
+          msgEl.className = 'status-msg';
+
+          const { data, error } = await backend.auth.updateUser({ email: newEmail });
+          if (error) throw error;
+
+          if (data?.user?.email?.toLowerCase() === newEmail.toLowerCase()) {
+            msgEl.textContent = 'Email address updated successfully!';
+            msgEl.className = 'status-msg status-success';
+            document.getElementById('email-form').reset();
+          } else {
+            msgEl.textContent = 'Supabase has not applied the new email yet. Email-change confirmation may be enabled in the project Auth settings.';
+            msgEl.className = 'status-msg status-error';
+          }
+        } catch (err) {
+          msgEl.textContent = err.message || 'Failed to update email address.';
+          msgEl.className = 'status-msg status-error';
+        }
       };
 
       // Password Form Submission
