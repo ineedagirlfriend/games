@@ -2625,6 +2625,33 @@ async function startChat(user) {
         return;
       }
 
+      if (commandKey === "/poll") {
+        if (!isAdminPlus) { showLocalSystemMessage("Only Admins and Owners can create polls.", true); return; }
+        const match = textToSend.match(/^\/poll\s+create\s+(\d+)(m|h|d|w)\s+(mc|sc)\s+title=(.+)$/i);
+        if (!match) { showLocalSystemMessage("Syntax: /poll create 1d mc title=What is your gender?, Male, Female, Prefer not to say.", true); return; }
+        const amount = Number(match[1]), unit = match[2].toLowerCase(), mode = match[3].toLowerCase();
+        const body = match[4], comma = body.indexOf(",");
+        if (!Number.isInteger(amount) || amount < 1 || comma < 1) { showLocalSystemMessage("Add a title and at least two comma-separated options.", true); return; }
+        const title = body.slice(0, comma).trim();
+        const options = body.slice(comma + 1).split(",").map(value => value.trim()).filter(Boolean);
+        const duration = amount * ({m:60000,h:3600000,d:86400000,w:604800000}[unit] || 0);
+        if (!title || title.length > 180 || options.length < 2 || options.length > 10 || duration <= 0 || duration > 30 * 86400000) {
+          showLocalSystemMessage("Polls need a title, 2–10 options, and a duration between 1 minute and 30 days.", true); return;
+        }
+        if (new Set(options.map(value => value.toLowerCase())).size !== options.length || options.some(value => value.length > 100)) {
+          showLocalSystemMessage("Poll options must be unique and no longer than 100 characters.", true); return;
+        }
+        const { data: poll, error } = await backend.from("chat_polls").insert({
+          title, options, votes: {}, poll_mode: mode, created_by: currentUser.id,
+          created_by_name: currentUsername, expires_at: new Date(Date.now() + duration).toISOString()
+        }).select("*").single();
+        if (error) { showLocalSystemMessage("Could not create poll: " + error.message, true); return; }
+        dbPublicMessages.push(normalizeChatPoll(poll));
+        renderMessages(true);
+        showLocalSystemMessage("Poll created.", false);
+        return;
+      }
+
       if (commandKey === "/help") {
         const available = EX_COMMANDS.filter(command => {
           if (["/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/clearstorage"].includes(command.name)) return isOwnerOnly;
