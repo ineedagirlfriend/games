@@ -855,6 +855,7 @@ async function showDMList(user){
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
   await removeBackendChannel(pollsChannel);pollsChannel=null;
+  await removeBackendChannel(privateChannel);privateChannel=null;
   dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages();
   document.getElementById("active-server-name").textContent="Direct Messages";
   document.querySelector(".channel-title strong").textContent="Direct Messages";
@@ -906,6 +907,7 @@ async function loadDMConversation(convo,user){
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
   await removeBackendChannel(pollsChannel);pollsChannel=null;
+  await removeBackendChannel(privateChannel);privateChannel=null;
   dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];
   const {data:members}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",convo.id);
   const ids=(members||[]).map(m=>m.user_id);
@@ -957,7 +959,7 @@ async function manageDMConversation(user){
     const ids=(blocks||[]).map(x=>x.blocked_id);
     const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
     if(!profiles?.length){alert("You have no blocked users.");return;}
-    const targetName=prompt("Choose a user to unblock:\\n"+profiles.map(x=>x.username).join("\\n"));if(!targetName)return;
+    const targetName=prompt("Choose a user to unblock:\\n"+profiles.map(x=>x.username).join("\n"));if(!targetName)return;
     const target=profiles.find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());
     if(!target){alert("User not found in your blocked list.");return;}
     const {error}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",target.id);
@@ -3930,7 +3932,9 @@ async function forwardMessage(msgData, collection) {
     forward_of_id: msgData.id,
     forward_of_collection: collection,
     forward_of_username: msgData.username || "User",
-    forward_of_text: msgData.text || ""
+    forward_of_text: msgData.text || "",
+    server_id: activeChatServerId,
+    channel_id: activeChatChannelId
   };
 
   try {
