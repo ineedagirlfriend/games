@@ -2656,7 +2656,8 @@ async function startChat(user) {
 
       if (commandKey === "/help") {
         const available = EX_COMMANDS.filter(command => {
-          if (["/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/clearstorage"].includes(command.name)) return isAdminPlus;
+          if (["/admin", "/unadmin", "/owner", "/unowner"].includes(command.name)) return currentUserRole === "owner";
+          if (["/subscription", "/deleteuser", "/clearstorage"].includes(command.name)) return isAdminPlus;
           if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tags", "/modlogs", "/serverinfo", "/stats", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
           return true;
         }).map(command => `${command.name} - ${command.desc}`).join(" | ");
@@ -3006,7 +3007,7 @@ async function startChat(user) {
         return;
       }
 
-      if (commandKey === "/admin" && isAdminPlus) {
+      if (commandKey === "/admin" && currentUserRole === "owner") {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /admin @username", true); return; }
         if (!checkRoleHierarchy(targetUser)) return;
@@ -3017,7 +3018,7 @@ async function startChat(user) {
         return;
       }
 
-      if (commandKey === "/unadmin" && isAdminPlus) {
+      if (commandKey === "/unadmin" && currentUserRole === "owner") {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /unadmin @username", true); return; }
         if (!checkRoleHierarchy(targetUser)) return;
@@ -3028,7 +3029,7 @@ async function startChat(user) {
         return;
       }
 
-      if (commandKey === "/owner" && isAdminPlus) {
+      if (commandKey === "/owner" && currentUserRole === "owner") {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /owner @username", true); return; }
         if (!checkRoleHierarchy(targetUser)) return;
@@ -3039,7 +3040,7 @@ async function startChat(user) {
         return;
       }
 
-      if (commandKey === "/unowner" && isAdminPlus) {
+      if (commandKey === "/unowner" && currentUserRole === "owner") {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /unowner @username", true); return; }
         if (!checkRoleHierarchy(targetUser)) return;
@@ -4093,9 +4094,8 @@ function setupAutocompleteEngine(input) {
           if (["/mute", "/unmute", "/ban", "/unban", "/permaban", "/deleteall", "/kick", "/warn", "/userinfo"].includes(c.name)) {
             return currentUserRole === "admin" || currentUserRole === "owner";
           }
-          if (["/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser"].includes(c.name)) {
-            return currentUserRole === "admin" || currentUserRole === "owner";
-          }
+          if (["/admin", "/unadmin", "/owner", "/unowner"].includes(c.name)) return currentUserRole === "owner";
+          if (["/subscription", "/deleteuser"].includes(c.name)) return currentUserRole === "admin" || currentUserRole === "owner";
           return true;
         }).filter(c => c.name.toLowerCase().startsWith(val.toLowerCase()));
 
