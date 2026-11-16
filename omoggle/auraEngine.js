@@ -1101,13 +1101,18 @@ export const AuraEngine = (() => {
     headForward = 0.5,
     eyesOpen = 0.5
   } = {}) {
-    const score =
+    const rawScore =
       clamp(gazeForward) * 0.38 +
       clamp(stillness) * 0.27 +
       clamp(headForward) * 0.20 +
       clamp(eyesOpen) * 0.15;
 
-    return Math.round(score * 100);
+    // Expand meaningful differences without allowing runaway scores.
+    // A 10-point raw performance gap becomes about 16 points, or ~160 Aura.
+    const contrastedScore =
+      0.5 + (rawScore - 0.5) * 1.6;
+
+    return Math.round(clamp(contrastedScore) * 100);
   }
 
   function compareEvaluations(
