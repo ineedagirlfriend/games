@@ -1150,10 +1150,10 @@ async function manageChatChannel(user){
     const {data:target}=await backend.from("users").select("id").ilike("username",username.trim()).maybeSingle();if(!target){alert("User not found.");return;}
     if(action==="5"){
       const {error}=await backend.from("chat_channel_overwrites").upsert({server_id:activeChatServerId,channel_id:channel.id,target_type:"user",target_id:target.id,allow_permissions:{view_channels:true,send_messages:true}});
-      if(error)alert(error.message);else alert("Member access added.");
+      if(error)alert(error.message);else{alert("Member access added.");await loadChatNavigation(user);}
     }else{
       const {error}=await backend.from("chat_channel_overwrites").delete().eq("channel_id",channel.id).eq("target_type","user").eq("target_id",target.id);
-      if(error)alert(error.message);else alert("Member access removed.");
+      if(error)alert(error.message);else{alert("Member access removed.");await loadChatNavigation(user);if(!activeChatChannels.some(c=>c.id===activeChatChannelId))await switchChatChannel((activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id,user);}
     }
   }else if(action==="7"){
     if(channel.channel_type==="text"&&activeChatChannels.filter(c=>c.channel_type==="text").length<=1){alert("Keep at least one text channel in each server.");return;}
