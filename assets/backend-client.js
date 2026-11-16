@@ -48,6 +48,7 @@ const auth = {
   },
   signOut: () => supabase.auth.signOut(),
   updateUser: (attributes) => supabase.auth.updateUser(attributes),
+  resetPasswordForEmail: (email, options) => supabase.auth.resetPasswordForEmail(email, options),
   onAuthStateChange(callback) {
     return supabase.auth.onAuthStateChange((event, session) => {
       const decorated = decorateSession(session);
