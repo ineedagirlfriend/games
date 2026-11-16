@@ -293,7 +293,7 @@
       const { data: records, error } = await backend
         .from("announcements")
         .select("*")
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: true });
 
       // Fallback if there is a database error or if no announcements exist
       if (error || !records || records.length === 0) {
