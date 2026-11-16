@@ -929,7 +929,7 @@ async function loadDMConversation(convo,user){
 
 async function manageDMConversation(user){
   if(!activeChatConversationId){alert("Open a DM first.");return;}
-  const action=prompt("DM options:\n1 Rename group\n2 Add members\n3 Leave conversation\n4 Block a member");
+  const action=prompt("DM options:\n1 Rename group\n2 Add members\n3 Leave conversation\n4 Block a member\n5 Unblock a user");
   if(action==="1"&&activeDMConversation?.conversation_type==="group"){
     const name=prompt("New group name:",activeDMConversation.name||"");if(name===null)return;
     const {error}=await backend.from("chat_conversations").update({name:name.trim()||null,updated_at:new Date().toISOString()}).eq("id",activeChatConversationId);
@@ -952,6 +952,16 @@ async function manageDMConversation(user){
     const targetName=prompt("Username to block: "+(profiles||[]).map(x=>x.username).join(", "));if(!targetName)return;
     const target=(profiles||[]).find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());if(!target){alert("Member not found.");return;}
     const {error}=await backend.from("chat_user_blocks").insert({blocker_id:user.id,blocked_id:target.id});if(error)alert(error.message);else{await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);await showDMList(user);alert("User blocked.");}
+  }else if(action==="5"){
+    const {data:blocks}=await backend.from("chat_user_blocks").select("blocked_id").eq("blocker_id",user.id);
+    const ids=(blocks||[]).map(x=>x.blocked_id);
+    const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
+    if(!profiles?.length){alert("You have no blocked users.");return;}
+    const targetName=prompt("Choose a user to unblock:\\n"+profiles.map(x=>x.username).join("\\n"));if(!targetName)return;
+    const target=profiles.find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());
+    if(!target){alert("User not found in your blocked list.");return;}
+    const {error}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",target.id);
+    if(error)alert(error.message);else alert("User unblocked.");
   }
 }
 
@@ -1049,7 +1059,7 @@ async function createChatChannel(user){
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
-  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership");
+  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member");
   if(!action)return;
   if(action==="1"||action==="2"){
     const field=action==="1"?"name":"description";const value=prompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
@@ -1100,6 +1110,19 @@ async function manageChatServer(user){
       if(assignError)alert("Role created, but assignment failed: "+assignError.message);
       else alert("Role created and assigned to @"+username.trim()+".");
     }else alert("Role created.");
+  }else if(action==="11"){
+    const {data:members}=await backend.from("chat_server_members").select("user_id").eq("server_id",activeChatServerId);
+    const ids=(members||[]).map(x=>x.user_id);
+    const {data:profiles}=ids.length?await backend.from("users").select("username").in("id",ids):{data:[]};
+    alert("Server members ("+(profiles||[]).length+"):\\n"+(profiles||[]).map(x=>"@"+x.username).join("\\n"));
+  }else if(action==="12"){
+    const username=prompt("Username to kick from this server:");if(!username)return;
+    const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).maybeSingle();
+    if(!target){alert("User not found.");return;}
+    const {error}=await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);
+    if(error){alert(error.message);return;}
+    await backend.from("chat_audit_log").insert({server_id:activeChatServerId,actor_id:user.id,action:"member_kicked",target_user_id:target.id});
+    alert("@"+target.username+" was kicked from this server.");
   }else if(action==="10"){
     const username=prompt("Username of the new owner (must already be a server member):");if(!username)return;
     const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).maybeSingle();
