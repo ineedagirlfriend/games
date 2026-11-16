@@ -159,6 +159,7 @@
     let opponentPerformance = 50;
     let lastSentPerformance = -1;
     let previousPose = null;
+    let smoothedMetrics = null;
     let trackerReady = false;
     let trackerStarting = false;
     let trackingUnavailable = false;
@@ -203,7 +204,7 @@
           const blend = result.faceBlendshapes?.[0]?.categories || [];
           if (!landmarks || landmarks.length < 478) {
             document.getElementById("tracking-status").textContent = "Center your face in the camera";
-            localPerformance = smoothScore(localPerformance, 20, 0.18);
+            localPerformance = smoothScore(localPerformance, 35, 0.12);
             sendPerformance();
             return;
           }
@@ -243,13 +244,19 @@
           }
           previousPose = pose;
 
-          const score = AuraEngine.calculateFocusScore({
-            gazeForward,
-            stillness,
-            headForward,
-            eyesOpen
-          });
-          localPerformance = smoothScore(localPerformance, score, 0.32);
+          // Smooth each input before scoring so tiny landmark jitter does not
+          // make the live result bounce around from frame to frame.
+          const rawMetrics = { gazeForward, stillness, headForward, eyesOpen };
+          if (!smoothedMetrics) {
+            smoothedMetrics = { ...rawMetrics };
+          } else {
+            for (const key of Object.keys(rawMetrics)) {
+              smoothedMetrics[key] = smoothScore(smoothedMetrics[key], rawMetrics[key], 0.22);
+            }
+          }
+
+          const score = AuraEngine.calculateFocusScore(smoothedMetrics);
+          localPerformance = smoothScore(localPerformance, score, 0.24);
           const status = document.getElementById("tracking-status");
           if (status) status.textContent =
             `Eyes ${Math.round(eyesOpen * 100)}% · Forward ${Math.round(gazeForward * 100)}% · Still ${Math.round(stillness * 100)}%`;
@@ -768,6 +775,7 @@
       opponentPerformance = 50;
       lastSentPerformance = -1;
       previousPose = null;
+      smoothedMetrics = null;
       scaleNeedle.style.left = '50%';
       startFaceTracker();
 
