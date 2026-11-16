@@ -2625,7 +2625,7 @@ async function startChat(user) {
       if (commandKey === "/help") {
         const available = EX_COMMANDS.filter(command => {
           if (["/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/clearstorage"].includes(command.name)) return isOwnerOnly;
-          if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tag", "/tags", "/modlogs", "/serverinfo", "/deleteall"].includes(command.name)) return isAdminPlus;
+          if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tag", "/tags", "/modlogs", "/serverinfo", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
           return true;
         }).map(command => `${command.name} - ${command.desc}`).join(" | ");
         showLocalSystemMessage(available, false);
