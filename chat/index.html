@@ -889,6 +889,7 @@ const EX_COMMANDS = [
   { name: "/deleteuser", desc: "Delete a user from the database {/deleteuser @user}" },
   { name: "/modlogs", desc: "View recent moderator audit events {/modlogs}" },
   { name: "/serverinfo", desc: "View chat server statistics {/serverinfo}" },
+  { name: "/stats", desc: "View registered-user statistics {/stats} (Admin/Owner)" },
   { name: "/kick", desc: "Kick a user from chat for 2 minutes {/kick @user reason}" },
   { name: "/mute", desc: "Mute a user for a duration {/mute @user time}" },
   { name: "/omoggle", desc: "Send an Omoggle video match challenge {/omoggle @user}" },
@@ -2646,7 +2647,7 @@ async function startChat(user) {
       if (commandKey === "/help") {
         const available = EX_COMMANDS.filter(command => {
           if (["/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/clearstorage"].includes(command.name)) return isOwnerOnly;
-          if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tag", "/tags", "/modlogs", "/serverinfo", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
+          if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tag", "/tags", "/modlogs", "/serverinfo", "/stats", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
           return true;
         }).map(command => `${command.name} - ${command.desc}`).join(" | ");
         showLocalSystemMessage(available, false);
@@ -2723,6 +2724,64 @@ async function startChat(user) {
         const { data: logs, error } = await backend.from("whispers").select("text, timestamp").eq("type", "mod_log").order("timestamp", { ascending: false }).limit(20);
         if (error) { showLocalSystemMessage(`Failed to load moderator logs: ${error.message}`, true); return; }
         showLocalSystemMessage(logs?.length ? logs.map(log => `${new Date(log.timestamp || Date.now()).toLocaleString()}: ${log.text}`).join(" | ") : "No moderator events recorded.", false);
+        return;
+      }
+
+      if (commandKey === "/stats") {
+        if (!isAdminPlus) {
+          showLocalSystemMessage("Only Admins and Owners can view user statistics.", true);
+          return;
+        }
+
+        const { data: users, error } = await backend
+          .from("users")
+          .select("id, grade, role, tags");
+
+        if (error || !users) {
+          showLocalSystemMessage("Could not load user statistics: " + (error?.message || "No user data returned."), true);
+          return;
+        }
+
+        const gradeCounts = {
+          "6th": 0, "7th": 0, "8th": 0, "9th": 0,
+          "10th": 0, "11th": 0, "12th": 0, "No grade": 0
+        };
+        const schoolCounts = { MMS: 0, IMS: 0, CMS: 0, NAI: 0, NASH: 0, "No school": 0 };
+        const roleCounts = { Owner: 0, Admin: 0, User: 0 };
+
+        users.forEach(user => {
+          const grade = String(user.grade || "").trim().toLowerCase();
+          if (Object.prototype.hasOwnProperty.call(gradeCounts, grade)) gradeCounts[grade]++;
+          else gradeCounts["No grade"]++;
+
+          const role = String(user.role || "user").toLowerCase();
+          if (role === "owner") roleCounts.Owner++;
+          else if (role === "admin") roleCounts.Admin++;
+          else roleCounts.User++;
+
+          const tags = Array.isArray(user.tags) ? user.tags : [];
+          const schoolTag = tags.find(tag => tag && typeof tag === "object" && tag.type === "school");
+          const school = String(schoolTag?.label || "").toUpperCase();
+          if (Object.prototype.hasOwnProperty.call(schoolCounts, school)) schoolCounts[school]++;
+          else schoolCounts["No school"]++;
+        });
+
+        const lines = [
+          "NAGames User Statistics",
+          `Total users: ${users.length}`,
+          "",
+          "By grade:",
+          ...Object.entries(gradeCounts).map(([grade, count]) => `${grade === "No grade" ? grade : grade + " grade"}: ${count}`),
+          "",
+          "By school:",
+          ...Object.entries(schoolCounts).map(([school, count]) => `${school}: ${count}`),
+          "",
+          "By role:",
+          `Owners: ${roleCounts.Owner}`,
+          `Admins: ${roleCounts.Admin}`,
+          `Users: ${roleCounts.User}`
+        ];
+        showLocalSystemMessage(lines.join("\\n"), false);
         return;
       }
 
