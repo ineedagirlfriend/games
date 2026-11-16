@@ -1048,7 +1048,10 @@ async function openChatActionMenu(title,description,options){
     const footer=document.createElement("div");footer.className="chat-ui-footer";let settled=false;
     const onKey=e=>{if(e.key==="Escape")finish(null);};
     const finish=value=>{if(settled)return;settled=true;document.removeEventListener("keydown",onKey);backdrop.remove();resolve(value);};
-    for(const option of options){const button=document.createElement("button");button.type="button";button.className="chat-ui-btn";button.style.cssText="text-align:left;width:100%;display:flex;justify-content:space-between;align-items:center";button.textContent=option.label;if(option.danger)button.classList.add("danger");button.addEventListener("click",()=>finish(option.value));body.appendChild(button);}
+    for(const option of options){
+      if(option.section){const section=document.createElement("div");section.textContent=option.section;section.style.cssText="padding:12px 4px 4px;color:var(--muted,#9ca3af);font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase";body.appendChild(section);continue;}
+      const button=document.createElement("button");button.type="button";button.className="chat-ui-btn";button.style.cssText="text-align:left;width:100%;display:flex;justify-content:space-between;align-items:center";button.textContent=option.label;if(option.danger)button.classList.add("danger");button.addEventListener("click",()=>finish(option.value));body.appendChild(button);
+    }
     const close=document.createElement("button");close.type="button";close.className="chat-ui-btn";close.textContent="Close";close.addEventListener("click",()=>finish(null));footer.appendChild(close);
     modal.append(head,body,footer);backdrop.appendChild(modal);backdrop.addEventListener("click",e=>{if(e.target===backdrop)finish(null);});
     document.addEventListener("keydown",onKey);document.body.appendChild(backdrop);
@@ -1387,7 +1390,23 @@ async function manageChatChannel(user){
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
-  const action=await openChatActionMenu("Server settings",activeChatServer.name,[{label:"Rename server",value:"1"},{label:"Change description",value:"2"},{label:"Change server picture",value:"3"},{label:"Ban a member",value:"4"},{label:"Unban a member",value:"5"},{label:"Leave server",value:"6",danger:true},{label:"Delete server",value:"7",danger:true},{label:"Create invite",value:"8"},{label:"Create role",value:"9"},{label:"Transfer ownership",value:"10"},{label:"View members",value:"11"},{label:"Kick a member",value:"12",danger:true},{label:"View audit log",value:"13"},{label:"Revoke an invite",value:"14"}])
+  const action=await openChatActionMenu("Server settings",activeChatServer.name,[
+    {section:"Server customization"},
+    {label:"Rename server",value:"1"},
+    {label:"Change description",value:"2"},
+    {label:"Change server picture",value:"3"},
+    {section:"Community & management"},
+    {label:"View members",value:"11"},
+    {label:"Create invite",value:"8"},
+    {label:"Revoke an invite",value:"14"},
+    {label:"Create role",value:"9"},
+    {label:"View audit log",value:"13"},
+    {section:"Ownership"},
+    {label:"Transfer ownership",value:"10"},
+    {section:"Leave or delete"},
+    ...(!activeChatServer.is_system&&activeChatServer.owner_id!==user.id?[{label:"Leave server",value:"6",danger:true}]:[]),
+    ...(activeChatServer.owner_id===user.id?[{label:"Delete server",value:"7",danger:true}]:[])
+  ])
   if(!action)return;
   if(action==="1"||action==="2"){
     const field=action==="1"?"name":"description";const value=await uiPrompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
