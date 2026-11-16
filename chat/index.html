@@ -1134,7 +1134,7 @@ async function manageChatChannel(user){
       if(error)alert(error.message);else alert("Member access removed.");
     }
   }else if(action==="7"){
-    if(activeChatChannels.filter(c=>c.channel_type==="text").length<=1){alert("Keep at least one text channel in each server.");return;}
+    if(channel.channel_type==="text"&&activeChatChannels.filter(c=>c.channel_type==="text").length<=1){alert("Keep at least one text channel in each server.");return;}
     if(!confirm("Delete #"+channel.name+" and its messages?"))return;
     const {error}=await backend.from("chat_channels").delete().eq("id",channel.id);if(error){alert(error.message);return;}
     await loadChatNavigation(user);
@@ -1142,12 +1142,6 @@ async function manageChatChannel(user){
   }
 }
 
-  const name=prompt("Channel name (1–80 characters):");if(!name||!name.trim())return;
-  const topic=prompt("Channel topic (optional):")||"";
-  const {data,error}=await backend.from("chat_channels").insert({server_id:activeChatServerId,name:name.trim().toLowerCase().replace(/\s+/g,"-"),topic:topic.trim(),channel_type:"text",position:activeChatChannels.length}).select("id").single();
-  if(error){alert("Could not create channel: "+error.message);return;}
-  await loadChatNavigation(user);await switchChatChannel(data.id,user);
-}
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
