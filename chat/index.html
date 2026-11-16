@@ -880,7 +880,6 @@ const EX_COMMANDS = [
   { name: "/deleteuser", desc: "Delete a user from the database {/deleteuser @user}" },
   { name: "/modlogs", desc: "View recent moderator audit events {/modlogs}" },
   { name: "/serverinfo", desc: "View chat server statistics {/serverinfo}" },
-  { name: "/announce", desc: "Post a server announcement {/announce text}" },
   { name: "/kick", desc: "Kick a user from chat for 2 minutes {/kick @user reason}" },
   { name: "/mute", desc: "Mute a user for a duration {/mute @user time}" },
   { name: "/omoggle", desc: "Send an Omoggle video match challenge {/omoggle @user}" },
@@ -2683,21 +2682,6 @@ async function startChat(user) {
 
       if (commandKey === "/serverinfo" && isAdminPlus) {
         showLocalSystemMessage(`Server info: ${allRegisteredUsers.length} cached users, ${dbPublicMessages.length} loaded public messages, ${dbPrivateMessages.length} loaded private messages.`, false);
-        return;
-      }
-
-      if (commandKey === "/announce" && isOwnerOnly) {
-        const announcement = effectiveSegments.slice(1).join(" ").trim();
-        if (!announcement) { showLocalSystemMessage("Syntax: /announce message text", true); return; }
-        const { error } = await backend.from("messages").insert([{
-          text: announcement,
-          username: "Server",
-          userId: null,
-          role: "system",
-          type: "announcement"
-        }]);
-        if (error) { showLocalSystemMessage(`Failed to publish announcement: ${error.message}`, true); return; }
-        await logModeratorEvent(`@${currentUsername} published an announcement.`);
         return;
       }
 
