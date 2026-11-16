@@ -940,7 +940,23 @@ async function loadDMConversation(convo,user){
 }
 
 async function manageDMConversation(user){
-  if(!activeChatConversationId){alert("Open a DM first.");return;}
+  if(!activeChatConversationId){
+    const choice=prompt("Direct message settings:\n1 View blocked users\n2 Unblock a user");
+    if(!choice)return;
+    const {data:blocks}=await backend.from("chat_user_blocks").select("blocked_id").eq("blocker_id",user.id);
+    const ids=(blocks||[]).map(x=>x.blocked_id);
+    const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
+    if(!profiles?.length){alert("You have no blocked users.");return;}
+    if(choice==="1"){alert("Blocked users:\n"+profiles.map(x=>"@"+x.username).join("\n"));return;}
+    if(choice==="2"){
+      const name=prompt("Username to unblock:\n"+profiles.map(x=>x.username).join("\n"));if(!name)return;
+      const target=profiles.find(x=>x.username.toLowerCase()===name.replace(/^@/,"").toLowerCase());
+      if(!target){alert("User not found in your blocked list.");return;}
+      const {error}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",target.id);
+      if(error)alert(error.message);else alert("User unblocked.");
+    }
+    return;
+  }
   const action=prompt("DM options:\n1 Rename group\n2 Add members\n3 Leave conversation\n4 Block a member\n5 Unblock a user");
   if(action==="1"&&activeDMConversation?.conversation_type==="group"){
     const name=prompt("New group name:",activeDMConversation.name||"");if(name===null)return;
