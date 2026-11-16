@@ -1062,21 +1062,13 @@ async function createOrJoinChatServer(user){
 }
 
 async function createChatServer(user){
-  const name=prompt("Name your server (1–80 characters):"); if(!name||!name.trim())return;
+  const name=prompt("Name your server (1–80 characters):");if(!name||!name.trim())return;
   const description=prompt("Server description (optional):")||"";
-  const {data:server,error}=await backend.from("chat_servers").insert({name:name.trim(),description:description.trim(),owner_id:user.id}).select("id").single();
-  if(error||!server){alert(error?.message||"Could not create server.");return;}
-  const member=await backend.from("chat_server_members").insert({server_id:server.id,user_id:user.id});
-  if(member.error){alert("Server created, but membership setup failed: "+member.error.message);return;}
-  const role=await backend.from("chat_server_roles").insert({server_id:server.id,name:"@everyone",color:"#99aab5",is_everyone:true,permissions:{view_channels:true,send_messages:true,add_reactions:true,create_invite:true}}).select("id").single();
-  if(role.error){alert("Default role setup failed: "+role.error.message);return;}
-  const ownerRole=await backend.from("chat_member_roles").insert({server_id:server.id,user_id:user.id,role_id:role.data.id,assigned_by:user.id});
-  if(ownerRole.error){alert("Default role assignment failed: "+ownerRole.error.message);return;}
-  const channel=await backend.from("chat_channels").insert({server_id:server.id,name:"general",channel_type:"text",topic:"Welcome to "+name.trim(),position:0}).select("id").single();
-  if(channel.error){alert("General channel setup failed: "+channel.error.message);return;}
-  activeChatServerId=server.id;activeChatChannelId=channel.data.id;await loadChatNavigation(user);await switchChatChannel(channel.data.id,user);
+  const {data,error}=await backend.rpc("create_chat_server",{p_name:name.trim(),p_description:description.trim()});
+  if(error||!data?.server_id||!data?.channel_id){alert(error?.message||"Could not create server.");return;}
+  activeChatServerId=data.server_id;activeChatChannelId=data.channel_id;
+  await loadChatNavigation(user);await switchChatChannel(data.channel_id,user);
 }
-
 
 
 async function manageChatCategory(category,user){
