@@ -1201,7 +1201,10 @@ async function manageChatServer(user){
     if(!target){alert("User not found.");return;}
     if(action==="4"){
       const reason=prompt("Reason (optional):")||"";
-      const result=await backend.from("chat_server_bans").upsert({server_id:activeChatServerId,user_id:target.id,banned_by:user.id,reason});
+      const duration=prompt("Ban duration in hours (0 = permanent):","0");if(duration===null)return;
+      const hours=Number(duration);if(!Number.isFinite(hours)||hours<0){alert("Enter 0 or a positive number.");return;}
+      const expires_at=hours?new Date(Date.now()+hours*3600000).toISOString():null;
+      const result=await backend.from("chat_server_bans").upsert({server_id:activeChatServerId,user_id:target.id,banned_by:user.id,reason,expires_at});
       if(result.error){alert(result.error.message);return;}
       await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);
       await backend.from("chat_audit_log").insert({server_id:activeChatServerId,actor_id:user.id,action:"member_banned",target_user_id:target.id,details:{reason}});
@@ -1210,7 +1213,9 @@ async function manageChatServer(user){
   }else if(action==="8"){
     const expires=prompt("Invite expiry in hours (0 = never):","0");if(expires===null)return;
     const hours=Number(expires);if(!Number.isFinite(hours)||hours<0){alert("Enter 0 or a positive number.");return;}
-    const {data,error}=await backend.from("chat_invites").insert({server_id:activeChatServerId,created_by:user.id,expires_at:hours?new Date(Date.now()+hours*3600000).toISOString():null}).select("code").single();
+    const maxRaw=prompt("Maximum uses (0 = unlimited):","0");if(maxRaw===null)return;
+    const maxUses=Number(maxRaw);if(!Number.isInteger(maxUses)||maxUses<0){alert("Maximum uses must be 0 or a positive whole number.");return;}
+    const {data,error}=await backend.from("chat_invites").insert({server_id:activeChatServerId,created_by:user.id,expires_at:hours?new Date(Date.now()+hours*3600000).toISOString():null,max_uses:maxUses||null}).select("code").single();
     if(error)alert(error.message);else{const link=location.origin+location.pathname+"?invite="+encodeURIComponent(data.code);try{await navigator.clipboard.writeText(link);alert("Invite link copied:\n"+link);}catch(_){prompt("Copy this invite link:",link);}}
   }else if(action==="9"){
     const name=prompt("New role name:");if(!name||!name.trim())return;
