@@ -3569,6 +3569,10 @@ function renderMessages(forceScrollDown = false) {
   }
 }
 
+function normalizeChatPoll(poll) {
+  return { ...poll, isPoll: true, isWhisper: false, isSystemMessage: false, username: poll.created_by_name || "Admin", timestamp: poll.created_at ? new Date(poll.created_at).getTime() : Date.now() };
+}
+
 function displayMessage(scroller, msgData) {
   const div = document.createElement("div");
   const dataCollectionTargetStr = msgData.isWhisper ? "whispers" : "messages";
