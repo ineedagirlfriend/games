@@ -958,6 +958,22 @@ async function openChatUserPicker({title="Select people",description="Search for
 }
 
 
+
+async function uiPrompt(message,defaultValue=""){
+  const field=chatModalField(message,String(defaultValue??""),"");
+  const result=await openChatModal("NAGames", "", field.wrap,[{label:"Cancel",value:null},{label:"Continue",value:"ok",primary:true}]);
+  return result==="ok"?field.input.value:null;
+}
+async function uiConfirm(message){
+  const result=await openChatModal("Please confirm",message,null,[{label:"Cancel",value:false},{label:"Continue",value:true,primary:true}]);
+  return result===true;
+}
+function uiAlert(message){
+  let toast=document.getElementById("chat-ui-toast");
+  if(!toast){toast=document.createElement("div");toast.id="chat-ui-toast";toast.style.cssText="position:fixed;z-index:11000;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(560px,calc(100vw - 28px));padding:13px 18px;border-radius:12px;background:#20243a;border:1px solid rgba(255,255,255,.16);color:#f8fafc;box-shadow:0 12px 40px #0009;font-weight:650;font-size:.9rem;text-align:center";document.body.appendChild(toast);}
+  toast.textContent=String(message);toast.style.display="block";clearTimeout(toast._hideTimer);toast._hideTimer=setTimeout(()=>{toast.style.display="none";},3600);
+}
+
 async function createChatConversation(user){
   const chosen=await openChatUserPicker({title:"Start a conversation",description:"Select one person for a direct message, or select multiple people to create a group DM. Use search to find accounts.",excludeIds:[user.id],confirmLabel:"Next"});
   if(!chosen?.length)return;
@@ -1151,70 +1167,70 @@ async function switchChatChannel(id,user){
 }
 
 async function createOrJoinChatServer(user){
-  const choice=prompt("Servers:\n1 Create a server\n2 Join with an invite code");
+  const choice=await uiPrompt("Servers:\n1 Create a server\n2 Join with an invite code");
   if(choice==="2"){
-    const code=prompt("Enter server invite code:");if(!code)return;
+    const code=await uiPrompt("Enter server invite code:");if(!code)return;
     const {data,error}=await backend.rpc("join_chat_server",{p_code:code.trim()});
-    if(error){alert(error.message);return;}
+    if(error){uiAlert(error.message);return;}
     activeChatServerId=data;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);return;
   }
   if(choice==="1")return createChatServer(user);
 }
 
 async function createChatServer(user){
-  const name=prompt("Name your server (1–80 characters):");if(!name||!name.trim())return;
-  const description=prompt("Server description (optional):")||"";
+  const name=await uiPrompt("Name your server (1–80 characters):");if(!name||!name.trim())return;
+  const description=await uiPrompt("Server description (optional):")||"";
   const {data,error}=await backend.rpc("create_chat_server",{p_name:name.trim(),p_description:description.trim()});
-  if(error||!data?.server_id||!data?.channel_id){alert(error?.message||"Could not create server.");return;}
+  if(error||!data?.server_id||!data?.channel_id){uiAlert(error?.message||"Could not create server.");return;}
   activeChatServerId=data.server_id;activeChatChannelId=data.channel_id;
   await loadChatNavigation(user);await switchChatChannel(data.channel_id,user);
 }
 
 
 async function manageChatCategory(category,user){
-  const action=prompt("Category — "+category.name+"\n1 Rename\n2 Delete");
+  const action=await uiPrompt("Category — "+category.name+"\n1 Rename\n2 Delete");
   if(action==="1"){
-    const name=prompt("New category name:",category.name);if(!name||!name.trim())return;
+    const name=await uiPrompt("New category name:",category.name);if(!name||!name.trim())return;
     const {error}=await backend.from("chat_categories").update({name:name.trim()}).eq("id",category.id);
-    if(error)alert(error.message);else await loadChatNavigation(user);
+    if(error)uiAlert(error.message);else await loadChatNavigation(user);
   }else if(action==="2"){
-    if(!confirm("Delete category "+category.name+"? Its channels will remain uncategorized."))return;
+    if(!await uiConfirm("Delete category "+category.name+"? Its channels will remain uncategorized."))return;
     const moved=await backend.from("chat_channels").update({category_id:null}).eq("category_id",category.id);
-    if(moved.error){alert(moved.error.message);return;}
+    if(moved.error){uiAlert(moved.error.message);return;}
     const {error}=await backend.from("chat_categories").delete().eq("id",category.id);
-    if(error)alert(error.message);else await loadChatNavigation(user);
+    if(error)uiAlert(error.message);else await loadChatNavigation(user);
   }
 }
 
 async function createChatCategory(user){
-  const name=prompt("Category name (1–80 characters):");if(!name||!name.trim())return;
+  const name=await uiPrompt("Category name (1–80 characters):");if(!name||!name.trim())return;
   const {error}=await backend.from("chat_categories").insert({server_id:activeChatServerId,name:name.trim(),position:activeChatCategories.length});
-  if(error)alert("Could not create category: "+error.message);else await loadChatNavigation(user);
+  if(error)uiAlert("Could not create category: "+error.message);else await loadChatNavigation(user);
 }
 
 async function createChatChannel(user){
-  const name=prompt("Channel name (1–80 characters):");if(!name||!name.trim())return;
-  const topic=prompt("Channel topic (optional):")||"";
+  const name=await uiPrompt("Channel name (1–80 characters):");if(!name||!name.trim())return;
+  const topic=await uiPrompt("Channel topic (optional):")||"";
   let categoryId=null;
   if(activeChatCategories.length){
-    const choice=prompt("Place in a category by number, or leave blank for uncategorized:\n"+activeChatCategories.map((c,i)=>(i+1)+". "+c.name).join("\n"));
+    const choice=await uiPrompt("Place in a category by number, or leave blank for uncategorized:\n"+activeChatCategories.map((c,i)=>(i+1)+". "+c.name).join("\n"));
     if(choice&&Number.isInteger(Number(choice))&&Number(choice)>=1&&Number(choice)<=activeChatCategories.length)categoryId=activeChatCategories[Number(choice)-1].id;
   }
-  const slow=Number(prompt("Slow mode in seconds (0–21600):","0"));
-  if(!Number.isInteger(slow)||slow<0||slow>21600){alert("Slow mode must be between 0 and 21600 seconds.");return;}
-  const isPrivate=confirm("Make this channel private? Only members you explicitly allow and server moderators will be able to view it.");
+  const slow=Number(await uiPrompt("Slow mode in seconds (0–21600):","0"));
+  if(!Number.isInteger(slow)||slow<0||slow>21600){uiAlert("Slow mode must be between 0 and 21600 seconds.");return;}
+  const isPrivate=await uiConfirm("Make this channel private? Only members you explicitly allow and server moderators will be able to view it.");
   const {data,error}=await backend.from("chat_channels").insert({
     server_id:activeChatServerId,category_id:categoryId,name:name.trim().toLowerCase().replace(/\s+/g,"-"),
     topic:topic.trim(),channel_type:"text",position:activeChatChannels.length,is_private:isPrivate,slowmode_seconds:slow
   }).select("id").single();
-  if(error){alert("Could not create channel: "+error.message);return;}
+  if(error){uiAlert("Could not create channel: "+error.message);return;}
   if(isPrivate){
-    const usernames=prompt("Usernames to allow in this private channel, separated by commas (optional):")||"";
+    const usernames=await uiPrompt("Usernames to allow in this private channel, separated by commas (optional):")||"";
     const names=usernames.split(",").map(x=>x.trim().replace(/^@/,"")).filter(Boolean);
     if(names.length){
       const {data:targets}=await backend.from("users").select("id").in("username",names);
       const rows=(targets||[]).map(t=>({server_id:activeChatServerId,channel_id:data.id,target_type:"user",target_id:t.id,allow_permissions:{view_channels:true,send_messages:true}}));
-      if(rows.length){const access=await backend.from("chat_channel_overwrites").insert(rows);if(access.error)alert("Channel created, but some access could not be added: "+access.error.message);}
+      if(rows.length){const access=await backend.from("chat_channel_overwrites").insert(rows);if(access.error)uiAlert("Channel created, but some access could not be added: "+access.error.message);}
     }
   }
   await loadChatNavigation(user);await switchChatChannel(data.id,user);
@@ -1222,40 +1238,40 @@ async function createChatChannel(user){
 
 async function manageChatChannel(user){
   const channel=activeChatChannels.find(c=>c.id===activeChatChannelId);
-  if(!channel){alert("Select a channel first.");return;}
-  const action=prompt("Channel settings — #"+channel.name+"\n1 Rename\n2 Change topic\n3 Toggle private/public\n4 Change slow mode\n5 Allow a member\n6 Remove a member's access\n7 Delete channel");
+  if(!channel){uiAlert("Select a channel first.");return;}
+  const action=await uiPrompt("Channel settings — #"+channel.name+"\n1 Rename\n2 Change topic\n3 Toggle private/public\n4 Change slow mode\n5 Allow a member\n6 Remove a member's access\n7 Delete channel");
   if(!action)return;
   if(action==="1"||action==="2"){
-    const field=action==="1"?"name":"topic";const value=prompt("New "+field+":",channel[field]||"");if(value===null)return;
+    const field=action==="1"?"name":"topic";const value=await uiPrompt("New "+field+":",channel[field]||"");if(value===null)return;
     const patch=field==="name"?value.trim().toLowerCase().replace(/\s+/g,"-"):value.trim();
     const {error}=await backend.from("chat_channels").update({[field]:patch}).eq("id",channel.id);
-    if(error)alert(error.message);else await loadChatNavigation(user);
+    if(error)uiAlert(error.message);else await loadChatNavigation(user);
   }else if(action==="3"){
     const previousChannelId=activeChatChannelId;
     const {error}=await backend.from("chat_channels").update({is_private:!channel.is_private}).eq("id",channel.id);
-    if(error)alert(error.message);else{await loadChatNavigation(user);if(activeChatChannelId!==previousChannelId&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);}
+    if(error)uiAlert(error.message);else{await loadChatNavigation(user);if(activeChatChannelId!==previousChannelId&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);}
   }else if(action==="4"){
-    const value=Number(prompt("Slow mode in seconds (0–21600):",String(channel.slowmode_seconds||0)));
-    if(!Number.isInteger(value)||value<0||value>21600){alert("Enter a whole number from 0 to 21600.");return;}
-    const {error}=await backend.from("chat_channels").update({slowmode_seconds:value}).eq("id",channel.id);if(error)alert(error.message);else await loadChatNavigation(user);
+    const value=Number(await uiPrompt("Slow mode in seconds (0–21600):",String(channel.slowmode_seconds||0)));
+    if(!Number.isInteger(value)||value<0||value>21600){uiAlert("Enter a whole number from 0 to 21600.");return;}
+    const {error}=await backend.from("chat_channels").update({slowmode_seconds:value}).eq("id",channel.id);if(error)uiAlert(error.message);else await loadChatNavigation(user);
   }else if(action==="5"||action==="6"){
-    const username=prompt(action==="5"?"Username to allow:":"Username to remove access from:");if(!username)return;
-    const {data:target}=await backend.from("users").select("id").ilike("username",username.trim()).maybeSingle();if(!target){alert("User not found.");return;}
+    const username=await uiPrompt(action==="5"?"Username to allow:":"Username to remove access from:");if(!username)return;
+    const {data:target}=await backend.from("users").select("id").ilike("username",username.trim()).maybeSingle();if(!target){uiAlert("User not found.");return;}
     if(action==="5"){
       const existing=await backend.from("chat_channel_overwrites").select("id").eq("channel_id",channel.id).eq("target_type","user").eq("target_id",target.id).maybeSingle();
       let result;
       if(existing.data)result=await backend.from("chat_channel_overwrites").update({allow_permissions:{view_channels:true,send_messages:true}}).eq("id",existing.data.id);
       else result=await backend.from("chat_channel_overwrites").insert({server_id:activeChatServerId,channel_id:channel.id,target_type:"user",target_id:target.id,allow_permissions:{view_channels:true,send_messages:true}});
-      if(result.error)alert(result.error.message);else{alert("Member access added.");await loadChatNavigation(user);}
+      if(result.error)uiAlert(result.error.message);else{uiAlert("Member access added.");await loadChatNavigation(user);}
     }else{
       const {error}=await backend.from("chat_channel_overwrites").delete().eq("channel_id",channel.id).eq("target_type","user").eq("target_id",target.id);
-      if(error)alert(error.message);else{alert("Member access removed.");const previousChannelId=activeChatChannelId;await loadChatNavigation(user);if(activeChatChannelId!==previousChannelId&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);}
+      if(error)uiAlert(error.message);else{uiAlert("Member access removed.");const previousChannelId=activeChatChannelId;await loadChatNavigation(user);if(activeChatChannelId!==previousChannelId&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);}
     }
   }else if(action==="7"){
-    if(channel.channel_type==="text"&&activeChatChannels.filter(c=>c.channel_type==="text").length<=1){alert("Keep at least one text channel in each server.");return;}
-    if(!confirm("Delete #"+channel.name+" and its messages?"))return;
+    if(channel.channel_type==="text"&&activeChatChannels.filter(c=>c.channel_type==="text").length<=1){uiAlert("Keep at least one text channel in each server.");return;}
+    if(!await uiConfirm("Delete #"+channel.name+" and its messages?"))return;
     const deletingActive=activeChatChannelId===channel.id;
-    const {error}=await backend.from("chat_channels").delete().eq("id",channel.id);if(error){alert(error.message);return;}
+    const {error}=await backend.from("chat_channels").delete().eq("id",channel.id);if(error){uiAlert(error.message);return;}
     if(deletingActive)activeChatChannelId=null;
     await loadChatNavigation(user);
     if(deletingActive&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);
@@ -1265,106 +1281,106 @@ async function manageChatChannel(user){
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
-  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member\n13 View audit log\n14 Revoke an invite");
+  const action=await uiPrompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member\n13 View audit log\n14 Revoke an invite");
   if(!action)return;
   if(action==="1"||action==="2"){
-    const field=action==="1"?"name":"description";const value=prompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
+    const field=action==="1"?"name":"description";const value=await uiPrompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
     const {error}=await backend.from("chat_servers").update({[field]:value.trim(),updated_at:new Date().toISOString()}).eq("id",activeChatServerId);
-    if(error)alert(error.message);else await loadChatNavigation(user);
+    if(error)uiAlert(error.message);else await loadChatNavigation(user);
   }else if(action==="3"){
     const picker=document.createElement("input");picker.type="file";picker.accept="image/png,image/jpeg,image/webp";
-    picker.onchange=async()=>{const file=picker.files?.[0];if(!file)return;if(file.size>5*1024*1024){alert("Server pictures must be 5 MB or smaller.");return;}
+    picker.onchange=async()=>{const file=picker.files?.[0];if(!file)return;if(file.size>5*1024*1024){uiAlert("Server pictures must be 5 MB or smaller.");return;}
       const ext=(file.name.split(".").pop()||"png").toLowerCase().replace(/[^a-z0-9]/g,"");
       const path="server-icons/"+user.id+"/"+activeChatServerId+"-"+Date.now()+"."+ext;
       const upload=await backend.storage.from("chat-files").upload(path,file,{upsert:false,contentType:file.type});
-      if(upload.error){alert("Picture upload failed: "+upload.error.message);return;}
+      if(upload.error){uiAlert("Picture upload failed: "+upload.error.message);return;}
       const url=backend.storage.from("chat-files").getPublicUrl(path).data.publicUrl;
       const saved=await backend.from("chat_servers").update({icon_url:url}).eq("id",activeChatServerId);
-      if(saved.error)alert(saved.error.message);else await loadChatNavigation(user);
+      if(saved.error)uiAlert(saved.error.message);else await loadChatNavigation(user);
     };picker.click();
   }else if(action==="4"||action==="5"){
-    const username=prompt(action==="4"?"Username to ban from this server:":"Username to unban:");if(!username)return;
+    const username=await uiPrompt(action==="4"?"Username to ban from this server:":"Username to unban:");if(!username)return;
     const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).limit(1).maybeSingle();
-    if(!target){alert("User not found.");return;}
+    if(!target){uiAlert("User not found.");return;}
     if(action==="4"){
-      const reason=prompt("Reason (optional):")||"";
-      const duration=prompt("Ban duration in hours (0 = permanent):","0");if(duration===null)return;
-      const hours=Number(duration);if(!Number.isFinite(hours)||hours<0){alert("Enter 0 or a positive number.");return;}
+      const reason=await uiPrompt("Reason (optional):")||"";
+      const duration=await uiPrompt("Ban duration in hours (0 = permanent):","0");if(duration===null)return;
+      const hours=Number(duration);if(!Number.isFinite(hours)||hours<0){uiAlert("Enter 0 or a positive number.");return;}
       const expires_at=hours?new Date(Date.now()+hours*3600000).toISOString():null;
       const banData={server_id:activeChatServerId,user_id:target.id,banned_by:user.id,reason,expires_at};
       let result=await backend.from("chat_server_bans").insert(banData);
       if(result.error?.code==="23505")result=await backend.from("chat_server_bans").update({banned_by:user.id,reason,expires_at}).eq("server_id",activeChatServerId).eq("user_id",target.id);
-      if(result.error){alert(result.error.message);return;}
+      if(result.error){uiAlert(result.error.message);return;}
       await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);
       await backend.from("chat_audit_log").insert({server_id:activeChatServerId,actor_id:user.id,action:"member_banned",target_user_id:target.id,details:{reason}});
-      alert(target.username+" was banned from this server.");
-    }else{const result=await backend.from("chat_server_bans").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);if(result.error)alert(result.error.message);else alert("Server ban removed.");}
+      uiAlert(target.username+" was banned from this server.");
+    }else{const result=await backend.from("chat_server_bans").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);if(result.error)uiAlert(result.error.message);else uiAlert("Server ban removed.");}
   }else if(action==="8"){
-    const expires=prompt("Invite expiry in hours (0 = never):","0");if(expires===null)return;
-    const hours=Number(expires);if(!Number.isFinite(hours)||hours<0){alert("Enter 0 or a positive number.");return;}
-    const maxRaw=prompt("Maximum uses (0 = unlimited):","0");if(maxRaw===null)return;
-    const maxUses=Number(maxRaw);if(!Number.isInteger(maxUses)||maxUses<0){alert("Maximum uses must be 0 or a positive whole number.");return;}
+    const expires=await uiPrompt("Invite expiry in hours (0 = never):","0");if(expires===null)return;
+    const hours=Number(expires);if(!Number.isFinite(hours)||hours<0){uiAlert("Enter 0 or a positive number.");return;}
+    const maxRaw=await uiPrompt("Maximum uses (0 = unlimited):","0");if(maxRaw===null)return;
+    const maxUses=Number(maxRaw);if(!Number.isInteger(maxUses)||maxUses<0){uiAlert("Maximum uses must be 0 or a positive whole number.");return;}
     const {data,error}=await backend.from("chat_invites").insert({server_id:activeChatServerId,created_by:user.id,expires_at:hours?new Date(Date.now()+hours*3600000).toISOString():null,max_uses:maxUses||null}).select("code").single();
-    if(error)alert(error.message);else{const link=location.origin+location.pathname+"?invite="+encodeURIComponent(data.code);try{await navigator.clipboard.writeText(link);alert("Invite link copied:\n"+link);}catch(_){prompt("Copy this invite link:",link);}}
+    if(error)uiAlert(error.message);else{const link=location.origin+location.pathname+"?invite="+encodeURIComponent(data.code);try{await navigator.clipboard.writeText(link);uiAlert("Invite link copied:\n"+link);}catch(_){await uiPrompt("Copy this invite link:",link);}}
   }else if(action==="9"){
-    const name=prompt("New role name:");if(!name||!name.trim())return;
-    const color=prompt("Role color in #RRGGBB format:","#7289da")||"#7289da";
-    const permissionText=prompt("Enter permissions separated by commas. Available: view_channels,send_messages,add_reactions,manage_messages,manage_channels,manage_roles,kick_members,ban_members,create_invite,view_audit_log,mention_everyone,manage_threads,manage_voice","view_channels,send_messages,add_reactions");
+    const name=await uiPrompt("New role name:");if(!name||!name.trim())return;
+    const color=await uiPrompt("Role color in #RRGGBB format:","#7289da")||"#7289da";
+    const permissionText=await uiPrompt("Enter permissions separated by commas. Available: view_channels,send_messages,add_reactions,manage_messages,manage_channels,manage_roles,kick_members,ban_members,create_invite,view_audit_log,mention_everyone,manage_threads,manage_voice","view_channels,send_messages,add_reactions");
     if(permissionText===null)return;
     const allowed=["view_channels","send_messages","add_reactions","manage_messages","manage_channels","manage_roles","kick_members","ban_members","create_invite","view_audit_log","mention_everyone","manage_threads","manage_voice","create_polls"];
     const permissions={};permissionText.split(",").map(x=>x.trim()).filter(Boolean).forEach(key=>{if(allowed.includes(key))permissions[key]=true;});
     const {data:role,error}=await backend.from("chat_server_roles").insert({server_id:activeChatServerId,name:name.trim(),color,position:1,permissions}).select("id").single();
-    if(error){alert(error.message);return;}
-    const username=prompt("Assign this role to which username? (Leave blank to create it without assigning.)");
+    if(error){uiAlert(error.message);return;}
+    const username=await uiPrompt("Assign this role to which username? (Leave blank to create it without assigning.)");
     if(username&&username.trim()){
       const {data:target}=await backend.from("users").select("id").ilike("username",username.trim()).maybeSingle();
-      if(!target){alert("Role created, but that user was not found.");return;}
+      if(!target){uiAlert("Role created, but that user was not found.");return;}
       const {error:assignError}=await backend.from("chat_member_roles").insert({server_id:activeChatServerId,user_id:target.id,role_id:role.id,assigned_by:user.id});
-      if(assignError)alert("Role created, but assignment failed: "+assignError.message);
-      else alert("Role created and assigned to @"+username.trim()+".");
-    }else alert("Role created.");
+      if(assignError)uiAlert("Role created, but assignment failed: "+assignError.message);
+      else uiAlert("Role created and assigned to @"+username.trim()+".");
+    }else uiAlert("Role created.");
   }else if(action==="11"){
     const {data:members}=await backend.from("chat_server_members").select("user_id").eq("server_id",activeChatServerId);
     const ids=(members||[]).map(x=>x.user_id);
     const {data:profiles}=ids.length?await backend.from("users").select("username").in("id",ids):{data:[]};
-    alert("Server members ("+(profiles||[]).length+"):\n"+(profiles||[]).map(x=>"@"+x.username).join("\n"));
+    uiAlert("Server members ("+(profiles||[]).length+"):\n"+(profiles||[]).map(x=>"@"+x.username).join("\n"));
   }else if(action==="12"){
-    const username=prompt("Username to kick from this server:");if(!username)return;
+    const username=await uiPrompt("Username to kick from this server:");if(!username)return;
     const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).maybeSingle();
-    if(!target){alert("User not found.");return;}
+    if(!target){uiAlert("User not found.");return;}
     const {error}=await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);
-    if(error){alert(error.message);return;}
+    if(error){uiAlert(error.message);return;}
     await backend.from("chat_audit_log").insert({server_id:activeChatServerId,actor_id:user.id,action:"member_kicked",target_user_id:target.id});
-    alert("@"+target.username+" was kicked from this server.");
+    uiAlert("@"+target.username+" was kicked from this server.");
   }else if(action==="13"){
     const {data:logs,error}=await backend.from("chat_audit_log").select("action,actor_id,target_user_id,created_at,details").eq("server_id",activeChatServerId).order("created_at",{ascending:false}).limit(50);
-    if(error){alert(error.message);return;}
+    if(error){uiAlert(error.message);return;}
     const ids=[...new Set((logs||[]).flatMap(x=>[x.actor_id,x.target_user_id]).filter(Boolean))];
     const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
     const names=new Map((profiles||[]).map(x=>[x.id,x.username]));
-    alert((logs||[]).map(x=>new Date(x.created_at).toLocaleString()+" — "+x.action+" — @"+(names.get(x.actor_id)||"unknown")+(x.target_user_id?" → @"+(names.get(x.target_user_id)||"unknown"):"")+(x.details?.reason?" ("+x.details.reason+")":"")).join("\n")||"No audit entries yet.");
+    uiAlert((logs||[]).map(x=>new Date(x.created_at).toLocaleString()+" — "+x.action+" — @"+(names.get(x.actor_id)||"unknown")+(x.target_user_id?" → @"+(names.get(x.target_user_id)||"unknown"):"")+(x.details?.reason?" ("+x.details.reason+")":"")).join("\n")||"No audit entries yet.");
   }else if(action==="14"){
     const {data:invites,error}=await backend.from("chat_invites").select("id,code,created_at,expires_at,uses").eq("server_id",activeChatServerId).order("created_at",{ascending:false}).limit(20);
-    if(error){alert(error.message);return;}
-    if(!invites?.length){alert("No invites found.");return;}
-    const code=prompt("Enter invite code to revoke:\n"+invites.map(x=>x.code+" (uses: "+x.uses+")").join("\n"));if(!code)return;
-    const target=invites.find(x=>x.code===code.trim());if(!target){alert("Invite not found.");return;}
+    if(error){uiAlert(error.message);return;}
+    if(!invites?.length){uiAlert("No invites found.");return;}
+    const code=await uiPrompt("Enter invite code to revoke:\n"+invites.map(x=>x.code+" (uses: "+x.uses+")").join("\n"));if(!code)return;
+    const target=invites.find(x=>x.code===code.trim());if(!target){uiAlert("Invite not found.");return;}
     const {error:removeError}=await backend.from("chat_invites").delete().eq("id",target.id);
-    if(removeError)alert(removeError.message);else alert("Invite revoked.");
+    if(removeError)uiAlert(removeError.message);else uiAlert("Invite revoked.");
   }else if(action==="10"){
-    const username=prompt("Username of the new owner (must already be a server member):");if(!username)return;
+    const username=await uiPrompt("Username of the new owner (must already be a server member):");if(!username)return;
     const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).maybeSingle();
-    if(!target){alert("User not found.");return;}
-    if(!confirm("Transfer ownership of "+activeChatServer.name+" to @"+target.username+"? You will lose owner permissions."))return;
+    if(!target){uiAlert("User not found.");return;}
+    if(!await uiConfirm("Transfer ownership of "+activeChatServer.name+" to @"+target.username+"? You will lose owner permissions."))return;
     const {error}=await backend.rpc("transfer_chat_server_owner",{p_server_id:activeChatServerId,p_new_owner:target.id});
-    if(error)alert(error.message);else{alert("Server ownership transferred.");await loadChatNavigation(user);}
+    if(error)uiAlert(error.message);else{uiAlert("Server ownership transferred.");await loadChatNavigation(user);}
   }else if(action==="6"){
-    if(activeChatServer.is_system){alert("You cannot leave the main NA server.");return;}
-    if(activeChatServer.owner_id===user.id){alert("Transfer ownership or delete the server before leaving it.");return;}
-    if(confirm("Leave this server?")){await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",user.id);activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
+    if(activeChatServer.is_system){uiAlert("You cannot leave the main NA server.");return;}
+    if(activeChatServer.owner_id===user.id){uiAlert("Transfer ownership or delete the server before leaving it.");return;}
+    if(await uiConfirm("Leave this server?")){await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",user.id);activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
   }else if(action==="7"){
-    if(activeChatServer.owner_id!==user.id){alert("Only the server owner can delete this server.");return;}
-    if(confirm("Permanently delete this server and its messages?")){const result=await backend.from("chat_servers").delete().eq("id",activeChatServerId);if(result.error){alert(result.error.message);return;}activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
+    if(activeChatServer.owner_id!==user.id){uiAlert("Only the server owner can delete this server.");return;}
+    if(await uiConfirm("Permanently delete this server and its messages?")){const result=await backend.from("chat_servers").delete().eq("id",activeChatServerId);if(result.error){uiAlert(result.error.message);return;}activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
   }
 }
 
@@ -3007,7 +3023,7 @@ async function startChat(user) {
   const inviteCode = new URLSearchParams(location.search).get("invite");
   if (inviteCode) {
     const joined = await backend.rpc("join_chat_server", { p_code: inviteCode });
-    if (joined.error) alert("Could not join server: " + joined.error.message);
+    if (joined.error) uiAlert("Could not join server: " + joined.error.message);
     else { activeChatServerId = joined.data; activeChatChannelId = null; }
     history.replaceState({}, "", location.pathname);
     await loadChatNavigation(user);
