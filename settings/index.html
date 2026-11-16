@@ -791,7 +791,7 @@
         context.fillText(avatarSourceName.charAt(0).toUpperCase(), canvasEl.width / 2, canvasEl.height / 2 + 1);
       }
 
-      async function clearStoredAvatar() {
+      async function clearStoredAvatar(keepStoragePath = null) {
         const filesToRemove = [`avatars/${user.id}.jpg`];
 
         const { data, error } = await backend.storage.from('chat-files').list('avatars', {
@@ -804,7 +804,9 @@
         (data || [])
           .map(item => item.name)
           .filter(name => name && name.startsWith(`${user.id}__`))
-          .forEach(name => filesToRemove.push(`avatars/${name}`));
+          .map(name => `avatars/${name}`)
+          .filter(path => path !== keepStoragePath)
+          .forEach(path => filesToRemove.push(path));
 
         const { error: removeError } = await backend.storage.from('chat-files').remove(filesToRemove);
         if (removeError) throw removeError;
@@ -1013,19 +1015,21 @@
           const avatarBlob = await new Promise(resolve => uploadCanvas.toBlob(resolve, 'image/jpeg', 0.85));
           if (!avatarBlob) throw new Error('Could not generate the profile picture file.');
 
-          await clearStoredAvatar();
-
           const storagePath = `avatars/${user.id}__${Date.now()}.jpg`;
           const { error: uploadError } = await backend.storage
             .from('chat-files')
             .upload(storagePath, avatarBlob, {
               contentType: 'image/jpeg',
-              upsert: false
+              upsert: false,
+              cacheControl: '0'
             });
 
           if (uploadError) throw uploadError;
 
-          avatarMsg.textContent = 'Profile picture saved to storage.';
+          // Only remove the previous avatar after the new file is safely uploaded.
+          await clearStoredAvatar(storagePath);
+
+          avatarMsg.textContent = 'Profile picture saved to storage. Reload chat to see it everywhere.';
           avatarMsg.className = 'status-msg status-success';
           avatarState.dirty = false;
           saveAvatarBtn.disabled = true;
