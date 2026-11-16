@@ -2589,7 +2589,7 @@ async function startChat(user) {
           );
           if (!username) continue;
           targets.unshift(username.toLowerCase());
-          normalized = normalized.slice(0, match.index) + "@" + username.replace(/\\s+/g, "_") + normalized.slice(start + username.length);
+          normalized = normalized.slice(0, match.index) + "@" + username.replace(/\\s+/g, "~space~") + normalized.slice(start + username.length);
         }
         return { targets, normalized };
       }
@@ -2611,7 +2611,7 @@ async function startChat(user) {
 
       async function resolveTargetUser() {
         if (targetUsernames.length === 0) return null;
-        const searchName = targetUsernames[0];
+        const searchName = targetUsernames[0].replace(/~space~/g, " ");
         if (["me", "self"].includes(searchName) || searchName === currentUsername.toLowerCase()) {
           return {
             id: currentUser.id,
@@ -2848,7 +2848,7 @@ async function startChat(user) {
 
       if (commandKey === "/privatevc") {
         const privateTargets = extractNamedTargets(textToSend).targets;
-        let targetUsernamesPrivate = privateTargets;
+        let targetUsernamesPrivate = privateTargets.map(name => name.replace(/~space~/g, " "));
         
         if (targetUsernamesPrivate.length === 0) {
           targetUsernamesPrivate = segments.slice(1).map(value => value.replace(/^@/, "").replace(/[.,!?;:]+$/, "").toLowerCase()).filter(Boolean);
