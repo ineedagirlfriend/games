@@ -903,7 +903,11 @@ async function showDMList(user){
   document.getElementById("open-dms-btn")?.classList.add("active");
   const list=document.getElementById("channel-list");list.innerHTML="";
   const inbox=document.createElement("button");inbox.className="channel-row";inbox.textContent="✉ Server DM · Requests & alerts";inbox.addEventListener("click",()=>loadServerDM(user));list.appendChild(inbox);
-  const serverShortcut=document.createElement("button");serverShortcut.className="server-rail-btn dm-shortcut";serverShortcut.title="Server DM · Requests & alerts";serverShortcut.setAttribute("aria-label",serverShortcut.title);serverShortcut.textContent="✉";serverShortcut.addEventListener("click",()=>loadServerDM(user));rail.appendChild(serverShortcut);
+  const serverDmReadAt=Number(localStorage.getItem("cg-server-dm-read:"+user.id)||0);
+  const {data:serverDmUnreadRows}=await backend.from("whispers").select("timestamp,type,isOmoggleInvite,server_id").contains("participants",[user.id]).order("timestamp",{ascending:false}).limit(300);
+  const hasServerDmUnread=(serverDmUnreadRows||[]).some(m=>(m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice")&&Number(m.timestamp||0)>serverDmReadAt);
+  const serverShortcut=document.createElement("button");serverShortcut.className="server-rail-btn dm-shortcut";serverShortcut.title="Server DM · Requests & alerts";serverShortcut.setAttribute("aria-label",serverShortcut.title);serverShortcut.textContent="✉";if(hasServerDmUnread)serverShortcut.classList.add("has-unread");serverShortcut.addEventListener("click",()=>loadServerDM(user));rail.appendChild(serverShortcut);
+  if(hasServerDmUnread){inbox.classList.add("has-unread");inbox.innerHTML='✉ Server DM · Requests & alerts <span class="unread-dot" aria-label="Unread alerts"></span>';}
   const {data:links,error}=await backend.from("chat_conversation_members").select("conversation_id").eq("user_id",user.id);
   if(error){console.error("DM list:",error);return;}
   const ids=[...new Set((links||[]).map(x=>x.conversation_id))];
@@ -940,6 +944,7 @@ async function showDMList(user){
 
 async function loadServerDM(user){
   isDMView=true;isServerDMView=true;activeChatConversationId=null;activeDMConversation=null;
+  if(user?.id){localStorage.setItem("cg-server-dm-read:"+user.id,String(Date.now()));document.querySelectorAll(".server-rail-btn.dm-shortcut").forEach(b=>{if(b.title.startsWith("Server DM"))b.classList.remove("has-unread");});document.querySelectorAll("#channel-list .channel-row").forEach(b=>{if(b.textContent.includes("Server DM"))b.classList.remove("has-unread");});}
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
   await removeBackendChannel(pollsChannel);pollsChannel=null;
