@@ -953,7 +953,7 @@ async function loadServerDM(user){
     const target=log.target_user_id? " · @"+(auditUserNames.get(log.target_user_id)||"user"):"";
     const actor=log.actor_id?"@"+(auditUserNames.get(log.actor_id)||"staff"):"Staff";
     const detail=log.details&&Object.keys(log.details).length?" · "+JSON.stringify(log.details):"";
-    return {id:"audit-"+log.id,text:"["+(auditServerNames.get(log.server_id)||"Server")+" staff log] "+actor+" "+log.action+target+detail,username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true};
+    const isNAGlobal=log.server_id==="10000000-0000-4000-8000-000000000001";\n    const message=log.details?.message;\n    return {id:"audit-"+log.id,text:isNAGlobal?"[NA global chat · staff log] "+(message||actor+" "+log.action+target+detail):"["+(auditServerNames.get(log.server_id)||"Server")+" staff log] "+actor+" "+log.action+target+detail,username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true};
   });
   dbPublicMessages=[...inboxMessages,...auditMessages].sort((a,b)=>a.timestamp-b.timestamp);
   renderMessages(true);
@@ -988,7 +988,9 @@ async function loadServerDM(user){
       ]);
       const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
       const target=log.target_user_id?" · @"+(names.get(log.target_user_id)||"user"):"";
-      dbPublicMessages.push({id:"audit-"+log.id,text:"["+(server?.name||"Server")+" staff log] "+(log.actor_id?"@"+(names.get(log.actor_id)||"staff"):"Staff")+" "+log.action+target+(log.details&&Object.keys(log.details).length?" · "+JSON.stringify(log.details):""),username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true});
+      const isNAGlobal=log.server_id==="10000000-0000-4000-8000-000000000001";
+      const details=log.details&&Object.keys(log.details).length?" · "+JSON.stringify(log.details):"";
+      dbPublicMessages.push({id:"audit-"+log.id,text:isNAGlobal?"[NA global chat · staff log] "+(log.details?.message||"A global admin action was recorded."):"["+(server?.name||"Server")+" staff log] "+(log.actor_id?"@"+(names.get(log.actor_id)||"staff"):"Staff")+" "+log.action+target+details,username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true});
       dbPublicMessages.sort((a,b)=>a.timestamp-b.timestamp);renderMessages(true);
     }).subscribe();
 }
@@ -2147,6 +2149,17 @@ function showSchoolPicker(force = false) {
 
 async function logModeratorEvent(text, serverId = activeChatServerId) {
   if (!currentUser || !serverId || (currentUserRole !== "admin" && currentUserRole !== "owner")) return;
+  const NA_GLOBAL_SERVER_ID = "10000000-0000-4000-8000-000000000001";
+  if (serverId === NA_GLOBAL_SERVER_ID) {
+    const {error}=await backend.from("chat_audit_log").insert([{
+      server_id:NA_GLOBAL_SERVER_ID,
+      actor_id:currentUser.id,
+      action:"global_chat_admin_action",
+      details:{scope:"NA global chat",message:String(text)}
+    }]);
+    if(error)console.warn("NA global chat audit log write failed:",error);
+    return;
+  }
   const [{data:members,error:memberError},{data:server,error:serverError}] = await Promise.all([
     backend.from("chat_server_members").select("user_id").eq("server_id",serverId),
     backend.from("chat_servers").select("owner_id,name").eq("id",serverId).maybeSingle()
