@@ -72,6 +72,7 @@ const storage = {
 export function createClient() {
   return {
     from: (table) => supabase.from(table),
+    rpc: (fn, args) => supabase.rpc(fn, args),
     auth,
     storage,
     functions: { invoke: (...args) => supabase.functions.invoke(...args) },
