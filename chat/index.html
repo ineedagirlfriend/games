@@ -769,7 +769,7 @@
 
   <header>
     <div class="nav-container">
-      <a href="../" class="logo">NA GAMES</a>
+      <a href="../" class="logo">NAGames</a>
       <nav>
         <ul>
           <li><a href="../">Home</a></li>
@@ -1053,7 +1053,7 @@ async function removeBackendChannel(channel) {
   try {
     await backend.removeChannel(channel);
   } catch (error) {
-    console.warn('Failed to remove NA GAMES backend channel:', error);
+    console.warn('Failed to remove NAGames backend channel:', error);
   }
 }
 
@@ -1106,7 +1106,7 @@ setTimeout(() => {
   if (currentUser && !initialSnapshotReceived) {
     if (currentUserBannedUntil && Date.now() < currentUserBannedUntil) return;
     // Do not reload the entire page for a slow/temporarily unavailable
-    // NA GAMES backend request. Reloading here caused an endless retry loop.
+    // NAGames backend request. Reloading here caused an endless retry loop.
     console.warn("Chat initial snapshot is taking longer than expected; keeping the page alive.");
   }
 }, 10000);
@@ -1442,7 +1442,7 @@ function showGradePicker(force = false) {
         const { error } = await backend.from("users").update({ grade }).eq("id", currentUser.id);
         if (error) {
           localStorage.setItem(`carsongames-grade-${currentUser.id}`, grade);
-          msg.textContent = "Saved locally. Add the grade column in NA GAMES backend to sync it across devices.";
+          msg.textContent = "Saved locally. Add the grade column in NAGames backend to sync it across devices.";
           msg.className = "status-msg status-error";
         } else {
           currentUserGrade = grade;
@@ -2713,7 +2713,7 @@ async function startChat(user) {
         const { error } = await backend.from("users").update({ grade: savedGrade }).eq("id", currentUser.id);
         currentUserGrade = savedGrade;
         localStorage.setItem(`carsongames-grade-${currentUser.id}`, savedGrade);
-        if (error) showLocalSystemMessage("Grade saved locally. Add the grade column in NA GAMES backend to sync it across devices.", true);
+        if (error) showLocalSystemMessage("Grade saved locally. Add the grade column in NAGames backend to sync it across devices.", true);
         else showLocalSystemMessage(`Your chat tag is now ${savedGrade ? GRADE_TAGS[savedGrade].label : "off"}.`, false);
         renderMessages(true);
         return;
