@@ -1031,7 +1031,8 @@ async function createChatServer(user){
   if(member.error){alert("Server created, but membership setup failed: "+member.error.message);return;}
   const role=await backend.from("chat_server_roles").insert({server_id:server.id,name:"@everyone",color:"#99aab5",is_everyone:true,permissions:{view_channels:true,send_messages:true,add_reactions:true,create_invite:true}}).select("id").single();
   if(role.error){alert("Default role setup failed: "+role.error.message);return;}
-  await backend.from("chat_member_roles").insert({server_id:server.id,user_id:user.id,role_id:role.data.id});
+  const ownerRole=await backend.from("chat_member_roles").insert({server_id:server.id,user_id:user.id,role_id:role.data.id,assigned_by:user.id});
+  if(ownerRole.error){alert("Default role assignment failed: "+ownerRole.error.message);return;}
   const channel=await backend.from("chat_channels").insert({server_id:server.id,name:"general",channel_type:"text",topic:"Welcome to "+name.trim(),position:0}).select("id").single();
   if(channel.error){alert("General channel setup failed: "+channel.error.message);return;}
   activeChatServerId=server.id;activeChatChannelId=channel.data.id;await loadChatNavigation(user);await switchChatChannel(channel.data.id,user);
@@ -1080,7 +1081,7 @@ async function manageChatServer(user){
     const expires=prompt("Invite expiry in hours (0 = never):","0");if(expires===null)return;
     const hours=Number(expires);if(!Number.isFinite(hours)||hours<0){alert("Enter 0 or a positive number.");return;}
     const {data,error}=await backend.from("chat_invites").insert({server_id:activeChatServerId,created_by:user.id,expires_at:hours?new Date(Date.now()+hours*3600000).toISOString():null}).select("code").single();
-    if(error)alert(error.message);else{const link=location.origin+"/chat/?invite="+encodeURIComponent(data.code);try{await navigator.clipboard.writeText(link);alert("Invite link copied:\n"+link);}catch(_){prompt("Copy this invite link:",link);}}
+    if(error)alert(error.message);else{const link=location.origin+location.pathname+"?invite="+encodeURIComponent(data.code);try{await navigator.clipboard.writeText(link);alert("Invite link copied:\n"+link);}catch(_){prompt("Copy this invite link:",link);}}
   }else if(action==="9"){
     const name=prompt("New role name:");if(!name||!name.trim())return;
     const color=prompt("Role color in #RRGGBB format:","#7289da")||"#7289da";
