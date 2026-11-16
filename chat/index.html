@@ -2585,18 +2585,18 @@ async function startChat(user) {
           const tail = source.slice(start);
           const username = knownUsernames.find(name =>
             tail.slice(0, name.length).toLowerCase() === name.toLowerCase() &&
-            (tail.length === name.length || /[\\s,!?;:]/.test(tail[name.length]))
+            (tail.length === name.length || /[\s,!?;:]/.test(tail[name.length]))
           );
           if (!username) continue;
           targets.unshift(username.toLowerCase());
-          normalized = normalized.slice(0, match.index) + "@" + username.replace(/\\s+/g, "~space~") + normalized.slice(start + username.length);
+          normalized = normalized.slice(0, match.index) + "@" + username.replace(/\s+/g, "~space~") + normalized.slice(start + username.length);
         }
         return { targets, normalized };
       }
 
       const extractedTargets = extractNamedTargets(textToSend);
       let targetUsernames = extractedTargets.targets;
-      let effectiveSegments = extractedTargets.normalized.split(/\\s+/);
+      let effectiveSegments = extractedTargets.normalized.split(/\s+/);
 
       // Keep backwards compatibility with commands that accept an untagged
       // single-word username.
