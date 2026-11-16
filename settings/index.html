@@ -593,7 +593,7 @@
           <h3>Change Username</h3>
           <div class="form-group">
             <label for="profile-username-setting">New Username</label>
-            <input type="text" id="profile-username-setting" name="profile-label-edit-field" value="${profile?.username || ''}" autocomplete="off" autocapitalize="off" spellcheck="false" readonly onpointerdown="this.removeAttribute(\'readonly\')" onfocus="this.removeAttribute(\'readonly\')" required>
+            <input type="text" id="profile-username-setting" name="profile-label-edit-field" value="${profile?.username || ''}" minlength="3" maxlength="24" pattern="[^\\s]+" title="Usernames cannot contain spaces." autocomplete="off" autocapitalize="off" spellcheck="false" readonly onpointerdown="this.removeAttribute(\'readonly\')" onfocus="this.removeAttribute(\'readonly\')" required>
           </div>
           <div class="btn-container"><button type="submit" class="btn-primary">Update Username</button></div>
           <div id="username-msg" class="status-msg"></div>
@@ -1161,11 +1161,22 @@
         };
       }
 
+      // Match the create-account page: remove whitespace as the user types.
+      const usernameSettingInput = document.getElementById('profile-username-setting');
+      usernameSettingInput.addEventListener('input', () => {
+        usernameSettingInput.value = usernameSettingInput.value.replace(/\s/g, '');
+      });
+
       // Username Form Submission
       document.getElementById('username-form').onsubmit = async (e) => {
         e.preventDefault();
         const newUsername = document.getElementById('profile-username-setting').value.trim();
         const msgEl = document.getElementById('username-msg');
+        if (!newUsername || newUsername.length < 3 || newUsername.length > 24 || /\s/.test(newUsername)) {
+          msgEl.textContent = 'Username must be 3–24 characters and cannot contain spaces.';
+          msgEl.className = 'status-msg status-error';
+          return;
+        }
         try {
           const { error } = await backend
             .from("users")
