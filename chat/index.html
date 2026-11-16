@@ -1314,7 +1314,17 @@ async function createChatChannel(user){
   }
   const slow=Number(await uiPrompt("Slow mode in seconds (0–21600):","0"));
   if(!Number.isInteger(slow)||slow<0||slow>21600){uiAlert("Slow mode must be between 0 and 21600 seconds.");return;}
-  const isPrivate=await uiConfirm("Make this channel private? Only members you explicitly allow and server moderators will be able to view it.");
+  const visibilityChoice=await openChatModal(
+    "Channel visibility",
+    "Would you like this channel to be public or private?",
+    null,
+    [
+      {label:"Public channel",value:false,primary:true},
+      {label:"Private channel",value:true}
+    ]
+  );
+  if(visibilityChoice===null)return;
+  const isPrivate=visibilityChoice;
   const {data,error}=await backend.from("chat_channels").insert({
     server_id:activeChatServerId,category_id:categoryId,name:name.trim().toLowerCase().replace(/\s+/g,"-"),
     topic:topic.trim(),channel_type:"text",position:activeChatChannels.length,is_private:isPrivate,slowmode_seconds:slow
