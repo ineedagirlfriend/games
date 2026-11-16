@@ -854,6 +854,7 @@ async function showDMList(user){
   isDMView=true;activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
+  await removeBackendChannel(pollsChannel);pollsChannel=null;
   dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages();
   document.getElementById("active-server-name").textContent="Direct Messages";
   document.querySelector(".channel-title strong").textContent="Direct Messages";
@@ -917,11 +918,11 @@ async function loadDMConversation(convo,user){
   if(error){showLocalSystemMessage("Could not load this DM: "+error.message,true);return;}
   const {data:senders}=ids.length?await backend.from("users").select("id,username,role").in("id",ids):{data:[]};
   const senderMap=new Map((senders||[]).map(p=>[p.id,p]));
-  dbPublicMessages=(messages||[]).map(m=>({id:m.id,text:m.content,username:senderMap.get(m.sender_id)?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:senderMap.get(m.sender_id)?.role||"user",timestamp:new Date(m.created_at).getTime(),isWhisper:false,isSystemMessage:false}));
+  dbPublicMessages=(messages||[]).map(m=>({id:m.id,text:m.content,username:senderMap.get(m.sender_id)?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:senderMap.get(m.sender_id)?.role||"user",timestamp:new Date(m.created_at).getTime(),isWhisper:false,isSystemMessage:false,isDMMessage:true}));
   renderMessages(true);
   dmRealtimeChannel=backend.channel("dm:"+convo.id).on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_dm_messages",filter:"conversation_id=eq."+convo.id},async payload=>{
     const m=payload.new;const {data:p}=await backend.from("users").select("username,role").eq("id",m.sender_id).maybeSingle();
-    if(!dbPublicMessages.some(x=>x.id===m.id)){dbPublicMessages.push({id:m.id,text:m.content,username:p?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:p?.role||"user",timestamp:new Date(m.created_at).getTime()});renderMessages(true);}
+    if(!dbPublicMessages.some(x=>x.id===m.id)){dbPublicMessages.push({id:m.id,text:m.content,username:p?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:p?.role||"user",timestamp:new Date(m.created_at).getTime(),isDMMessage:true});renderMessages(true);}
   }).subscribe();
   await backend.from("chat_conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",convo.id).eq("user_id",user.id);
 }
@@ -4312,6 +4313,7 @@ function displayMessage(scroller, msgData) {
   const forwardBtn = div.querySelector(".btn-forward-msg");
   const editBtn = div.querySelector(".btn-edit-msg");
   const deleteBtn = div.querySelector(".btn-delete-msg");
+  if (msgData.isDMMessage) [replyBtn, forwardBtn, editBtn, deleteBtn].forEach(button => button?.remove());
 
   if (replyBtn) {
     replyBtn.onclick = (e) => {
