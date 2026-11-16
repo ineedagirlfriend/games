@@ -885,7 +885,7 @@ const EX_COMMANDS = [
   { name: "/tags", desc: "View a user's tags {/tags @user}" },
   { name: "/admin", desc: "Promote a user to Admin {/admin @user}" },
   { name: "/ban", desc: "Ban a user for a duration {/ban @user time reason}" },
-  { name: "/clearstorage", desc: "Delete all chat uploads while keeping profile pictures (owner only)" },
+  { name: "/clearstorage", desc: "Delete all chat uploads while keeping profile pictures (Admin/Owner)" },
   { name: "/deleteall", desc: "Wipe all chat messages and whispers {/deleteall}" },
   { name: "/deleteuser", desc: "Delete a user from the database {/deleteuser @user}" },
   { name: "/modlogs", desc: "View recent moderator audit events {/modlogs}" },
@@ -2586,7 +2586,7 @@ async function startChat(user) {
         }
       }
 
-      const isOwnerOnly = currentUserRole === "owner";
+      const isOwnerOnly = isAdminPlus;
 
       async function resolveTargetUser() {
         if (targetUsernames.length === 0) return null;
@@ -2617,14 +2617,6 @@ async function startChat(user) {
         if (!target) return false;
         if (target.id === currentUser.id) {
           showLocalSystemMessage("You cannot perform this action on yourself.", true);
-          return false;
-        }
-        if (target.role === "owner" && currentUserRole !== "owner") {
-          showLocalSystemMessage("You cannot perform this action on an Owner.", true);
-          return false;
-        }
-        if (target.role === "admin" && currentUserRole === "admin") {
-          showLocalSystemMessage("You cannot perform this action on another Admin.", true);
           return false;
         }
         return true;
@@ -3018,6 +3010,7 @@ async function startChat(user) {
       if (commandKey === "/admin" && isOwnerOnly) {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /admin @username", true); return; }
+        if (!checkRoleHierarchy(targetUser)) return;
         const { error } = await backend.from("users").update({ role: "admin" }).eq("id", targetUser.id);
         if (error) { showLocalSystemMessage(`Failed to promote user: ${error.message}`, true); return; }
         showLocalSystemMessage(`Promoted @${targetUser.username} to Admin.`, false);
@@ -3028,6 +3021,7 @@ async function startChat(user) {
       if (commandKey === "/unadmin" && isOwnerOnly) {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /unadmin @username", true); return; }
+        if (!checkRoleHierarchy(targetUser)) return;
         const { error } = await backend.from("users").update({ role: "user" }).eq("id", targetUser.id);
         if (error) { showLocalSystemMessage(`Failed to demote user: ${error.message}`, true); return; }
         showLocalSystemMessage(`Demoted @${targetUser.username} to standard User level.`, false);
@@ -3038,6 +3032,7 @@ async function startChat(user) {
       if (commandKey === "/owner" && isOwnerOnly) {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /owner @username", true); return; }
+        if (!checkRoleHierarchy(targetUser)) return;
         const { error } = await backend.from("users").update({ role: "owner" }).eq("id", targetUser.id);
         if (error) { showLocalSystemMessage(`Failed to promote user: ${error.message}`, true); return; }
         showLocalSystemMessage(`Promoted @${targetUser.username} to Owner privileges.`, false);
@@ -3048,6 +3043,7 @@ async function startChat(user) {
       if (commandKey === "/unowner" && isOwnerOnly) {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /unowner @username", true); return; }
+        if (!checkRoleHierarchy(targetUser)) return;
         const { error } = await backend.from("users").update({ role: "admin" }).eq("id", targetUser.id);
         if (error) { showLocalSystemMessage(`Failed to demote user: ${error.message}`, true); return; }
         showLocalSystemMessage(`Demoted @${targetUser.username} to Admin.`, false);
@@ -4099,7 +4095,7 @@ function setupAutocompleteEngine(input) {
             return currentUserRole === "admin" || currentUserRole === "owner";
           }
           if (["/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser"].includes(c.name)) {
-            return currentUserRole === "owner";
+            return currentUserRole === "admin" || currentUserRole === "owner";
           }
           return true;
         }).filter(c => c.name.toLowerCase().startsWith(val.toLowerCase()));
