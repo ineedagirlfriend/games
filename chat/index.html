@@ -1323,7 +1323,7 @@ function showLocalSystemMessage(text, isError = false) {
 
 // Increase this number whenever the rules below are changed.
 // Users who accepted an older version will be asked to review the new rules.
-const CHAT_RULES_VERSION = 3;
+const CHAT_RULES_VERSION = 4;
 const CHAT_RULES_ACCEPTED_KEY = "cg-chat-rules-accepted-v1";
 
 function hasAcceptedChatRules() {
@@ -1352,7 +1352,7 @@ function showChatRules() {
           <ul style="padding-left:1.4rem;line-height:1.8;color:var(--text);font-weight:600;">
             <li>No age-inappropriate content</li>
             <li>No hating or bullying</li>
-            <li>No racism/li>
+            <li>No racism</li>
             <li>account email must match school email</li>
             <li>Age and school must be accurate</li>
           </ul>
