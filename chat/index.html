@@ -1131,8 +1131,9 @@ async function manageChatChannel(user){
     const {error}=await backend.from("chat_channels").update({[field]:patch}).eq("id",channel.id);
     if(error)alert(error.message);else await loadChatNavigation(user);
   }else if(action==="3"){
+    const previousChannelId=activeChatChannelId;
     const {error}=await backend.from("chat_channels").update({is_private:!channel.is_private}).eq("id",channel.id);
-    if(error)alert(error.message);else{await loadChatNavigation(user);if(!activeChatChannels.some(c=>c.id===activeChatChannelId))await switchChatChannel(activeChatChannels[0]?.id,user);}
+    if(error)alert(error.message);else{await loadChatNavigation(user);if(activeChatChannelId!==previousChannelId&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);}
   }else if(action==="4"){
     const value=Number(prompt("Slow mode in seconds (0–21600):",String(channel.slowmode_seconds||0)));
     if(!Number.isInteger(value)||value<0||value>21600){alert("Enter a whole number from 0 to 21600.");return;}
@@ -1145,14 +1146,16 @@ async function manageChatChannel(user){
       if(error)alert(error.message);else{alert("Member access added.");await loadChatNavigation(user);}
     }else{
       const {error}=await backend.from("chat_channel_overwrites").delete().eq("channel_id",channel.id).eq("target_type","user").eq("target_id",target.id);
-      if(error)alert(error.message);else{alert("Member access removed.");await loadChatNavigation(user);if(!activeChatChannels.some(c=>c.id===activeChatChannelId))await switchChatChannel((activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id,user);}
+      if(error)alert(error.message);else{alert("Member access removed.");const previousChannelId=activeChatChannelId;await loadChatNavigation(user);if(activeChatChannelId!==previousChannelId&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);}
     }
   }else if(action==="7"){
     if(channel.channel_type==="text"&&activeChatChannels.filter(c=>c.channel_type==="text").length<=1){alert("Keep at least one text channel in each server.");return;}
     if(!confirm("Delete #"+channel.name+" and its messages?"))return;
+    const deletingActive=activeChatChannelId===channel.id;
     const {error}=await backend.from("chat_channels").delete().eq("id",channel.id);if(error){alert(error.message);return;}
+    if(deletingActive)activeChatChannelId=null;
     await loadChatNavigation(user);
-    if(!activeChatChannels.some(c=>c.id===activeChatChannelId))await switchChatChannel((activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id,user);
+    if(deletingActive&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);
   }
 }
 
