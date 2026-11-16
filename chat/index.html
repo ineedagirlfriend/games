@@ -875,6 +875,7 @@ function updateLayoutDimensions() {
 }
 
 const EX_COMMANDS = [
+  { name: "/rules", desc: "Show the current chat and Omoggle rules {/rules}" },
   { name: "/help", desc: "Show commands available to you {/help}" },
   { name: "/ping", desc: "Check chat responsiveness {/ping}" },
   { name: "/poll", desc: "Create a timed poll {/poll create 1d mc title=Question?, option 1, option 2} (Admin/Owner)" },
@@ -1338,6 +1339,13 @@ function showLocalSystemMessage(text, isError = false) {
 // Users who accepted an older version will be asked to review the new rules.
 const CHAT_RULES_VERSION = 4;
 const CHAT_RULES_ACCEPTED_KEY = "cg-chat-rules-accepted-v1";
+const CHAT_RULES = [
+  "No age-inappropriate content",
+  "No hating or bullying",
+  "No racism",
+  "Account email must match school email",
+  "Age and school must be accurate"
+];
 
 function hasAcceptedChatRules() {
   try {
@@ -1363,11 +1371,7 @@ function showChatRules() {
         <p style="color:var(--text-muted);font-size:.9rem;margin-bottom:15px;">Please read the rules before continuing.</p>
         <div id="chat-rules-scroll" tabindex="0" style="min-height:150px;max-height:48dvh;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-m);padding:18px;color:var(--text);line-height:1.65;">
           <ul style="padding-left:1.4rem;line-height:1.8;color:var(--text);font-weight:600;">
-            <li>No age-inappropriate content</li>
-            <li>No hating or bullying</li>
-            <li>No racism</li>
-            <li>account email must match school email</li>
-            <li>Age and school must be accurate</li>
+            ${CHAT_RULES.map(rule => `<li>${escapeHtml(rule)}</li>`).join("")}
           </ul>
         </div>
         <p style="color:#fbbf24;font-size:.82rem;font-weight:700;line-height:1.45;margin:13px 0 17px;">Breaking any of these rules can result in a ban.</p>
@@ -2641,6 +2645,12 @@ async function startChat(user) {
         dbPublicMessages.push(normalizeChatPoll(poll));
         renderMessages(true);
         showLocalSystemMessage("Poll created.", false);
+        return;
+      }
+
+      if (commandKey === "/rules") {
+        const rulesText = ["Current Chat & Omoggle Rules:", ...CHAT_RULES.map((rule, index) => `${index + 1}. ${rule}`), "", "Breaking any of these rules can result in a ban."].join("\\n");
+        showLocalSystemMessage(rulesText, false);
         return;
       }
 
