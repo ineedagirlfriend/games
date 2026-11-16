@@ -753,8 +753,9 @@
     .channel-row { width:100%; border:0; border-radius:8px; padding:11px 10px; text-align:left; background:transparent; color:var(--text-muted); font-weight:700; font-size:13px; cursor:pointer; display:flex; align-items:center; gap:8px; }
     .channel-row.active,.channel-row:hover { background:var(--card-hover); color:var(--text); }
     .channel-row .hash { opacity:.65; font-size:17px; }
-    .channel-sidebar-actions { display:flex; gap:6px; padding:8px; border-top:1px solid var(--border); }
-    .channel-sidebar-actions button { flex:1; min-height:40px; border:1px solid var(--border); border-radius:8px; color:var(--text); background:var(--card); font-weight:700; cursor:pointer; }
+    .channel-sidebar-actions { display:flex; flex-wrap:wrap; gap:6px; padding:8px; border-top:1px solid var(--border); }
+    .channel-sidebar-actions button { flex:1 1 calc(50% - 6px); min-width:0; min-height:40px; padding:4px; border:1px solid var(--border); border-radius:8px; color:var(--text); background:var(--card); font-size:11px; font-weight:700; cursor:pointer; }
+    .channel-category-heading { display:flex; align-items:center; padding:13px 8px 5px; color:var(--text-muted); font-size:10px; font-weight:900; letter-spacing:.09em; text-transform:uppercase; }
     .chat-main { flex:1; min-width:0; max-width:none; }
     @media(max-width:700px) { .server-sidebar{width:58px;flex-basis:58px;padding-left:5px;padding-right:5px}.server-rail-btn{width:44px;height:44px;min-height:44px}.channel-sidebar{width:155px;flex-basis:155px}.channel-row{font-size:12px;padding:10px 7px}.chat-header{padding:.8rem}.message-scroller{padding:.9rem} }
 
@@ -811,7 +812,7 @@
     <aside class="channel-sidebar" id="channel-sidebar" aria-label="Channels">
       <div class="server-sidebar-head" id="active-server-name">Loading servers…</div>
       <div class="channel-list" id="channel-list"></div>
-      <div class="channel-sidebar-actions"><button id="create-channel-btn" type="button">+ Channel</button><button id="server-settings-btn" type="button">Settings</button></div>
+      <div class="channel-sidebar-actions"><button id="create-channel-btn" type="button">+ Channel</button><button id="create-category-btn" type="button">+ Category</button><button id="channel-settings-btn" type="button">Channel</button><button id="server-settings-btn" type="button">Settings</button></div>
     </aside>
     <section class="chat-main">
       <div class="chat-header">
@@ -844,6 +845,7 @@ let activeChatServerId = "10000000-0000-4000-8000-000000000001";
 let activeChatChannelId = "10000000-0000-4000-8000-000000000003";
 let activeChatServer = null;
 let activeChatChannels = [];
+let activeChatCategories = [];
 let isDMView = false;
 let activeChatConversationId = null;
 let activeDMConversation = null;
@@ -877,6 +879,8 @@ async function showDMList(user){
     const b=document.createElement("button");b.className="channel-row";b.textContent="● "+label;b.addEventListener("click",()=>loadDMConversation(convo,user));list.appendChild(b);
   }
   const create=document.getElementById("create-channel-btn");create.textContent="+ New DM";create.onclick=()=>createChatConversation(user);
+  document.getElementById("create-category-btn").style.display="none";
+  document.getElementById("channel-settings-btn").style.display="none";
   const settings=document.getElementById("server-settings-btn");settings.textContent="DM settings";settings.onclick=()=>manageDMConversation(user);
 }
 
@@ -1000,28 +1004,42 @@ async function loadChatNavigation(user) {
   document.getElementById("create-server-btn")?.addEventListener("click",()=>createOrJoinChatServer(user));
   activeChatServer=rows.find(s=>s.id===activeChatServerId);
   document.getElementById("active-server-name").textContent=activeChatServer?.name||"Server";
-  const {data:channels,error:channelError}=await backend.from("chat_channels").select("id,name,channel_type,topic,position,is_private").eq("server_id",activeChatServerId).order("position");
+  const {data:categories,error:categoryError}=await backend.from("chat_categories").select("id,name,position").eq("server_id",activeChatServerId).order("position");
+  if(categoryError){console.error("Categories:",categoryError);return;}
+  activeChatCategories=categories||[];
+  const {data:channels,error:channelError}=await backend.from("chat_channels").select("id,name,channel_type,topic,position,is_private,category_id,slowmode_seconds").eq("server_id",activeChatServerId).order("position");
   if(channelError){console.error("Channels:",channelError);return;}
   activeChatChannels=channels||[]; list.innerHTML="";
-  for(const channel of activeChatChannels){
-    const b=document.createElement("button"); b.className="channel-row"+(channel.id===activeChatChannelId?" active":"");
+  const appendChannel=channel=>{
+    const b=document.createElement("button");b.className="channel-row"+(channel.id===activeChatChannelId?" active":"");b.dataset.channelId=channel.id;
     b.innerHTML='<span class="hash">'+(channel.channel_type==="voice"?"◖":"#")+'</span><span>'+escapeHtml(channel.name)+'</span>';
-    b.addEventListener("click",()=>switchChatChannel(channel.id,user)); list.appendChild(b);
+    b.addEventListener("click",()=>switchChatChannel(channel.id,user));list.appendChild(b);
+  };
+  for(const category of activeChatCategories){
+    const heading=document.createElement("div");heading.className="channel-category-heading";heading.textContent=category.name;list.appendChild(heading);
+    activeChatChannels.filter(c=>c.category_id===category.id).forEach(appendChannel);
   }
+  const uncategorized=activeChatChannels.filter(c=>!c.category_id);
+  if(uncategorized.length){const heading=document.createElement("div");heading.className="channel-category-heading";heading.textContent="Channels";list.appendChild(heading);uncategorized.forEach(appendChannel);}
+  if(!activeChatCategories.length)activeChatChannels.forEach((c,i)=>{if(!c.category_id&&list.querySelectorAll(".channel-row").length===0)appendChannel(c);});
   if(!activeChatChannelId||!activeChatChannels.some(c=>c.id===activeChatChannelId)){
     activeChatChannelId=(activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id||null;
   }
   setActiveChatTitle(activeChatChannels.find(c=>c.id===activeChatChannelId));
   document.getElementById("create-channel-btn").textContent="+ Channel";
+  document.getElementById("create-category-btn").style.display="";
+  document.getElementById("channel-settings-btn").style.display="";
   document.getElementById("server-settings-btn").textContent="Settings";
   document.getElementById("create-channel-btn").onclick=()=>createChatChannel(user);
+  document.getElementById("create-category-btn").onclick=()=>createChatCategory(user);
+  document.getElementById("channel-settings-btn").onclick=()=>manageChatChannel(user);
   document.getElementById("server-settings-btn").onclick=()=>manageChatServer(user);
 }
 
 async function switchChatChannel(id,user){
   activeChatChannelId=id;
   setActiveChatTitle(activeChatChannels.find(c=>c.id===id));
-  document.querySelectorAll(".channel-row").forEach((el,i)=>el.classList.toggle("active",activeChatChannels[i]?.id===id));
+  document.querySelectorAll(".channel-row").forEach(el=>el.classList.toggle("active",el.dataset.channelId===id));
   dbPublicMessages=[]; dbHistoricalMessages=[]; historyPageOffset=0; allMessagesLoaded=false;
   await listenForNewMessages(user||currentUser);
 }
@@ -1053,7 +1071,77 @@ async function createChatServer(user){
   activeChatServerId=server.id;activeChatChannelId=channel.data.id;await loadChatNavigation(user);await switchChatChannel(channel.data.id,user);
 }
 
+
+async function createChatCategory(user){
+  const name=prompt("Category name (1–80 characters):");if(!name||!name.trim())return;
+  const {error}=await backend.from("chat_categories").insert({server_id:activeChatServerId,name:name.trim(),position:activeChatCategories.length});
+  if(error)alert("Could not create category: "+error.message);else await loadChatNavigation(user);
+}
+
 async function createChatChannel(user){
+  const name=prompt("Channel name (1–80 characters):");if(!name||!name.trim())return;
+  const topic=prompt("Channel topic (optional):")||"";
+  let categoryId=null;
+  if(activeChatCategories.length){
+    const choice=prompt("Place in a category by number, or leave blank for uncategorized:\n"+activeChatCategories.map((c,i)=>(i+1)+". "+c.name).join("\n"));
+    if(choice&&Number.isInteger(Number(choice))&&Number(choice)>=1&&Number(choice)<=activeChatCategories.length)categoryId=activeChatCategories[Number(choice)-1].id;
+  }
+  const slow=Number(prompt("Slow mode in seconds (0–21600):","0"));
+  if(!Number.isInteger(slow)||slow<0||slow>21600){alert("Slow mode must be between 0 and 21600 seconds.");return;}
+  const isPrivate=confirm("Make this channel private? Only members you explicitly allow and server moderators will be able to view it.");
+  const {data,error}=await backend.from("chat_channels").insert({
+    server_id:activeChatServerId,category_id:categoryId,name:name.trim().toLowerCase().replace(/\s+/g,"-"),
+    topic:topic.trim(),channel_type:"text",position:activeChatChannels.length,is_private:isPrivate,slowmode_seconds:slow
+  }).select("id").single();
+  if(error){alert("Could not create channel: "+error.message);return;}
+  if(isPrivate){
+    const usernames=prompt("Usernames to allow in this private channel, separated by commas (optional):")||"";
+    const names=usernames.split(",").map(x=>x.trim().replace(/^@/,"")).filter(Boolean);
+    if(names.length){
+      const {data:targets}=await backend.from("users").select("id").in("username",names);
+      const rows=(targets||[]).map(t=>({server_id:activeChatServerId,channel_id:data.id,target_type:"user",target_id:t.id,allow_permissions:{view_channels:true,send_messages:true}}));
+      if(rows.length){const access=await backend.from("chat_channel_overwrites").insert(rows);if(access.error)alert("Channel created, but some access could not be added: "+access.error.message);}
+    }
+  }
+  await loadChatNavigation(user);await switchChatChannel(data.id,user);
+}
+
+async function manageChatChannel(user){
+  const channel=activeChatChannels.find(c=>c.id===activeChatChannelId);
+  if(!channel){alert("Select a channel first.");return;}
+  const action=prompt("Channel settings — #"+channel.name+"\n1 Rename\n2 Change topic\n3 Toggle private/public\n4 Change slow mode\n5 Allow a member\n6 Remove a member's access\n7 Delete channel");
+  if(!action)return;
+  if(action==="1"||action==="2"){
+    const field=action==="1"?"name":"topic";const value=prompt("New "+field+":",channel[field]||"");if(value===null)return;
+    const patch=field==="name"?value.trim().toLowerCase().replace(/\s+/g,"-"):value.trim();
+    const {error}=await backend.from("chat_channels").update({[field]:patch}).eq("id",channel.id);
+    if(error)alert(error.message);else await loadChatNavigation(user);
+  }else if(action==="3"){
+    const {error}=await backend.from("chat_channels").update({is_private:!channel.is_private}).eq("id",channel.id);
+    if(error)alert(error.message);else{await loadChatNavigation(user);if(!activeChatChannels.some(c=>c.id===activeChatChannelId))await switchChatChannel(activeChatChannels[0]?.id,user);}
+  }else if(action==="4"){
+    const value=Number(prompt("Slow mode in seconds (0–21600):",String(channel.slowmode_seconds||0)));
+    if(!Number.isInteger(value)||value<0||value>21600){alert("Enter a whole number from 0 to 21600.");return;}
+    const {error}=await backend.from("chat_channels").update({slowmode_seconds:value}).eq("id",channel.id);if(error)alert(error.message);else await loadChatNavigation(user);
+  }else if(action==="5"||action==="6"){
+    const username=prompt(action==="5"?"Username to allow:":"Username to remove access from:");if(!username)return;
+    const {data:target}=await backend.from("users").select("id").ilike("username",username.trim()).maybeSingle();if(!target){alert("User not found.");return;}
+    if(action==="5"){
+      const {error}=await backend.from("chat_channel_overwrites").upsert({server_id:activeChatServerId,channel_id:channel.id,target_type:"user",target_id:target.id,allow_permissions:{view_channels:true,send_messages:true}});
+      if(error)alert(error.message);else alert("Member access added.");
+    }else{
+      const {error}=await backend.from("chat_channel_overwrites").delete().eq("channel_id",channel.id).eq("target_type","user").eq("target_id",target.id);
+      if(error)alert(error.message);else alert("Member access removed.");
+    }
+  }else if(action==="7"){
+    if(activeChatChannels.filter(c=>c.channel_type==="text").length<=1){alert("Keep at least one text channel in each server.");return;}
+    if(!confirm("Delete #"+channel.name+" and its messages?"))return;
+    const {error}=await backend.from("chat_channels").delete().eq("id",channel.id);if(error){alert(error.message);return;}
+    await loadChatNavigation(user);
+    if(!activeChatChannels.some(c=>c.id===activeChatChannelId))await switchChatChannel((activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id,user);
+  }
+}
+
   const name=prompt("Channel name (1–80 characters):");if(!name||!name.trim())return;
   const topic=prompt("Channel topic (optional):")||"";
   const {data,error}=await backend.from("chat_channels").insert({server_id:activeChatServerId,name:name.trim().toLowerCase().replace(/\s+/g,"-"),topic:topic.trim(),channel_type:"text",position:activeChatChannels.length}).select("id").single();
