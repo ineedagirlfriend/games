@@ -959,6 +959,14 @@ async function openChatUserPicker({title="Select people",description="Search for
 
 
 
+async function openChatActionMenu(title,description,options){
+  const content=document.createElement("div");content.style.cssText="display:grid;gap:8px";
+  return new Promise(resolve=>{
+    let settled=false;const finish=value=>{if(settled)return;settled=true;document.querySelector(".chat-ui-backdrop")?.remove();resolve(value);};
+    for(const option of options){const b=document.createElement("button");b.type="button";b.className="chat-ui-btn";b.style.cssText="text-align:left;width:100%;display:flex;justify-content:space-between;align-items:center";b.textContent=option.label;if(option.danger)b.classList.add("danger");b.addEventListener("click",()=>finish(option.value));content.appendChild(b);}
+    openChatModal(title,description,content,[{label:"Close",value:null}]).then(value=>{if(!settled)finish(value);});
+  });
+}
 async function uiPrompt(message,defaultValue=""){
   const field=chatModalField(message,String(defaultValue??""),"");
   const result=await openChatModal("NAGames", "", field.wrap,[{label:"Cancel",value:null},{label:"Continue",value:"ok",primary:true}]);
@@ -1167,7 +1175,7 @@ async function switchChatChannel(id,user){
 }
 
 async function createOrJoinChatServer(user){
-  const choice=await uiPrompt("Servers:\n1 Create a server\n2 Join with an invite code");
+  const choice=await openChatActionMenu("Servers","Create a new server or join one with an invite code.",[{label:"Create a server",value:"1"},{label:"Join with invite code",value:"2"}])
   if(choice==="2"){
     const code=await uiPrompt("Enter server invite code:");if(!code)return;
     const {data,error}=await backend.rpc("join_chat_server",{p_code:code.trim()});
@@ -1188,7 +1196,7 @@ async function createChatServer(user){
 
 
 async function manageChatCategory(category,user){
-  const action=await uiPrompt("Category — "+category.name+"\n1 Rename\n2 Delete");
+  const action=await openChatActionMenu("Category settings","Manage “"+category.name+"”.",[{label:"Rename category",value:"1"},{label:"Delete category",value:"2",danger:true}])
   if(action==="1"){
     const name=await uiPrompt("New category name:",category.name);if(!name||!name.trim())return;
     const {error}=await backend.from("chat_categories").update({name:name.trim()}).eq("id",category.id);
@@ -1239,7 +1247,7 @@ async function createChatChannel(user){
 async function manageChatChannel(user){
   const channel=activeChatChannels.find(c=>c.id===activeChatChannelId);
   if(!channel){uiAlert("Select a channel first.");return;}
-  const action=await uiPrompt("Channel settings — #"+channel.name+"\n1 Rename\n2 Change topic\n3 Toggle private/public\n4 Change slow mode\n5 Allow a member\n6 Remove a member's access\n7 Delete channel");
+  const action=await openChatActionMenu("Channel settings","#"+channel.name,[{label:"Rename channel",value:"1"},{label:"Change topic",value:"2"},{label:channel.is_private?"Make channel public":"Make channel private",value:"3"},{label:"Change slow mode",value:"4"},{label:"Allow a member",value:"5"},{label:"Remove a member’s access",value:"6"},{label:"Delete channel",value:"7",danger:true}])
   if(!action)return;
   if(action==="1"||action==="2"){
     const field=action==="1"?"name":"topic";const value=await uiPrompt("New "+field+":",channel[field]||"");if(value===null)return;
@@ -1281,7 +1289,7 @@ async function manageChatChannel(user){
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
-  const action=await uiPrompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member\n13 View audit log\n14 Revoke an invite");
+  const action=await openChatActionMenu("Server settings",activeChatServer.name,[{label:"Rename server",value:"1"},{label:"Change description",value:"2"},{label:"Change server picture",value:"3"},{label:"Ban a member",value:"4"},{label:"Unban a member",value:"5"},{label:"Leave server",value:"6",danger:true},{label:"Delete server",value:"7",danger:true},{label:"Create invite",value:"8"},{label:"Create role",value:"9"},{label:"Transfer ownership",value:"10"},{label:"View members",value:"11"},{label:"Kick a member",value:"12",danger:true},{label:"View audit log",value:"13"},{label:"Revoke an invite",value:"14"}])
   if(!action)return;
   if(action==="1"||action==="2"){
     const field=action==="1"?"name":"description";const value=await uiPrompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
