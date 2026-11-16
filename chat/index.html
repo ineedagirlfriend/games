@@ -1097,7 +1097,14 @@ function uiAlert(message){
 }
 
 async function createChatConversation(user){
-  const chosen=await openChatUserPicker({title:"Start a conversation",description:"Select one person for a direct message, or select multiple people to create a group DM. Use search to find accounts.",excludeIds:[user.id],confirmLabel:"Next"});
+  // Use the verified Supabase Auth identity for RLS ownership checks.
+  const {data:{user:authUser},error:authError}=await backend.auth.getUser();
+  if(authError||!authUser?.id){
+    showLocalSystemMessage("Your sign-in session could not be verified. Please refresh and sign in again.",true);
+    return;
+  }
+  const creatorId=authUser.id;
+  const chosen=await openChatUserPicker({title:"Start a conversation",description:"Select one person for a direct message, or select multiple people to create a group DM. Use search to find accounts.",excludeIds:[creatorId],confirmLabel:"Next"});
   if(!chosen?.length)return;
   let groupName=null;
   if(chosen.length>1){
@@ -1107,9 +1114,9 @@ async function createChatConversation(user){
     groupName=field.input.value.trim()||null;
   }
   const type=chosen.length===1?"direct":"group";
-  const {data:convo,error}=await backend.from("chat_conversations").insert({conversation_type:type,name:groupName,created_by:user.id}).select("id").single();
+  const {data:convo,error}=await backend.from("chat_conversations").insert({conversation_type:type,name:groupName,created_by:creatorId}).select("id").single();
   if(error){showLocalSystemMessage("Could not create DM: "+error.message,true);return;}
-  const rows=[{conversation_id:convo.id,user_id:user.id,added_by:user.id},...chosen.map(u=>({conversation_id:convo.id,user_id:u.id,added_by:user.id}))];
+  const rows=[{conversation_id:convo.id,user_id:creatorId,added_by:creatorId},...chosen.map(u=>({conversation_id:convo.id,user_id:u.id,added_by:creatorId}))];
   const added=await backend.from("chat_conversation_members").insert(rows);
   if(added.error){await backend.from("chat_conversations").delete().eq("id",convo.id);showLocalSystemMessage("Could not add DM members. A user may have blocked this conversation. "+added.error.message,true);return;}
   await showDMList(user);await loadDMConversation({id:convo.id,conversation_type:type,name:groupName},user);
