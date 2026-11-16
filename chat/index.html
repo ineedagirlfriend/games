@@ -953,7 +953,9 @@ async function loadServerDM(user){
     const target=log.target_user_id? " · @"+(auditUserNames.get(log.target_user_id)||"user"):"";
     const actor=log.actor_id?"@"+(auditUserNames.get(log.actor_id)||"staff"):"Staff";
     const detail=log.details&&Object.keys(log.details).length?" · "+JSON.stringify(log.details):"";
-    const isNAGlobal=log.server_id==="10000000-0000-4000-8000-000000000001";\n    const message=log.details?.message;\n    return {id:"audit-"+log.id,text:isNAGlobal?"[NA global chat · staff log] "+(message||actor+" "+log.action+target+detail):"["+(auditServerNames.get(log.server_id)||"Server")+" staff log] "+actor+" "+log.action+target+detail,username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true};
+    const isNAGlobal=log.server_id==="10000000-0000-4000-8000-000000000001";
+    const message=log.details?.message;
+    return {id:"audit-"+log.id,text:isNAGlobal?"[NA global chat · staff log] "+(message||actor+" "+log.action+target+detail):"["+(auditServerNames.get(log.server_id)||"Server")+" staff log] "+actor+" "+log.action+target+detail,username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true};
   });
   dbPublicMessages=[...inboxMessages,...auditMessages].sort((a,b)=>a.timestamp-b.timestamp);
   renderMessages(true);
