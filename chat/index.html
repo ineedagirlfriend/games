@@ -2470,7 +2470,7 @@ async function startChat(user) {
   if (!currentUserGrade) currentUserGrade = localStorage.getItem(`carsongames-grade-${user.id}`) || "";
   await showGradePicker(!currentUserGrade);
   if (!currentUserGrade) await showGradePicker(true);
-  await showSchoolPicker(true);
+  await showSchoolPicker(false);
   await showChatRules();
 
   listenForNewMessages(user);
