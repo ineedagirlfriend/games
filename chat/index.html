@@ -946,6 +946,8 @@ let processedOmoggleRedirects = new Set();
 let publicChannel = null;
 let privateChannel = null;
 let pollsChannel = null;
+let pollExpiryInterval = null;
+const processedPollExpirations = new Set();
 let pollsChannel = null;
 let userProfileChannel = null;
 let avatarIndexByUserId = new Map();
@@ -2435,6 +2437,19 @@ async function startChat(user) {
   await showChatRules();
 
   listenForNewMessages(user);
+  if (!pollExpiryInterval) {
+    pollExpiryInterval = setInterval(() => {
+      const now = Date.now();
+      let changed = false;
+      dbPublicMessages.forEach(poll => {
+        if (poll.isPoll && poll.expires_at && new Date(poll.expires_at).getTime() <= now && !processedPollExpirations.has(poll.id)) {
+          processedPollExpirations.add(poll.id);
+          changed = true;
+        }
+      });
+      if (changed) renderMessages();
+    }, 15000);
+  }
   scroller.addEventListener("scroll", handleScrollPagination);
   setupAutocompleteEngine(input);
   
