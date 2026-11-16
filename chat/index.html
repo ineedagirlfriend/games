@@ -1162,7 +1162,7 @@ async function manageChatChannel(user){
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
-  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member");
+  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member\\n13 View audit log\\n14 Revoke an invite");
   if(!action)return;
   if(action==="1"||action==="2"){
     const field=action==="1"?"name":"description";const value=prompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
@@ -1226,6 +1226,21 @@ async function manageChatServer(user){
     if(error){alert(error.message);return;}
     await backend.from("chat_audit_log").insert({server_id:activeChatServerId,actor_id:user.id,action:"member_kicked",target_user_id:target.id});
     alert("@"+target.username+" was kicked from this server.");
+  }else if(action==="13"){
+    const {data:logs,error}=await backend.from("chat_audit_log").select("action,actor_id,target_user_id,created_at,details").eq("server_id",activeChatServerId).order("created_at",{ascending:false}).limit(50);
+    if(error){alert(error.message);return;}
+    const ids=[...new Set((logs||[]).flatMap(x=>[x.actor_id,x.target_user_id]).filter(Boolean))];
+    const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
+    const names=new Map((profiles||[]).map(x=>[x.id,x.username]));
+    alert((logs||[]).map(x=>new Date(x.created_at).toLocaleString()+" — "+x.action+" — @"+(names.get(x.actor_id)||"unknown")+(x.target_user_id?" → @"+(names.get(x.target_user_id)||"unknown"):"")+(x.details?.reason?" ("+x.details.reason+")":"")).join("\\n")||"No audit entries yet.");
+  }else if(action==="14"){
+    const {data:invites,error}=await backend.from("chat_invites").select("id,code,created_at,expires_at,uses").eq("server_id",activeChatServerId).order("created_at",{ascending:false}).limit(20);
+    if(error){alert(error.message);return;}
+    if(!invites?.length){alert("No invites found.");return;}
+    const code=prompt("Enter invite code to revoke:\\n"+invites.map(x=>x.code+" (uses: "+x.uses+")").join("\\n"));if(!code)return;
+    const target=invites.find(x=>x.code===code.trim());if(!target){alert("Invite not found.");return;}
+    const {error:removeError}=await backend.from("chat_invites").delete().eq("id",target.id);
+    if(removeError)alert(removeError.message);else alert("Invite revoked.");
   }else if(action==="10"){
     const username=prompt("Username of the new owner (must already be a server member):");if(!username)return;
     const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).maybeSingle();
