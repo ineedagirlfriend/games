@@ -969,7 +969,7 @@ async function manageDMConversation(user){
     const ids=(blocks||[]).map(x=>x.blocked_id);
     const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
     if(!profiles?.length){alert("You have no blocked users.");return;}
-    const targetName=prompt("Choose a user to unblock:\\n"+profiles.map(x=>x.username).join("\n"));if(!targetName)return;
+    const targetName=prompt("Choose a user to unblock:\n"+profiles.map(x=>x.username).join("\n"));if(!targetName)return;
     const target=profiles.find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());
     if(!target){alert("User not found in your blocked list.");return;}
     const {error}=await backend.from("chat_user_blocks").delete().eq("blocker_id",user.id).eq("blocked_id",target.id);
@@ -1162,7 +1162,7 @@ async function manageChatChannel(user){
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
-  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member\\n13 View audit log\\n14 Revoke an invite");
+  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership\n11 List members\n12 Kick a member\n13 View audit log\n14 Revoke an invite");
   if(!action)return;
   if(action==="1"||action==="2"){
     const field=action==="1"?"name":"description";const value=prompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
@@ -1217,7 +1217,7 @@ async function manageChatServer(user){
     const {data:members}=await backend.from("chat_server_members").select("user_id").eq("server_id",activeChatServerId);
     const ids=(members||[]).map(x=>x.user_id);
     const {data:profiles}=ids.length?await backend.from("users").select("username").in("id",ids):{data:[]};
-    alert("Server members ("+(profiles||[]).length+"):\\n"+(profiles||[]).map(x=>"@"+x.username).join("\\n"));
+    alert("Server members ("+(profiles||[]).length+"):\n"+(profiles||[]).map(x=>"@"+x.username).join("\n"));
   }else if(action==="12"){
     const username=prompt("Username to kick from this server:");if(!username)return;
     const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).maybeSingle();
@@ -1232,12 +1232,12 @@ async function manageChatServer(user){
     const ids=[...new Set((logs||[]).flatMap(x=>[x.actor_id,x.target_user_id]).filter(Boolean))];
     const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
     const names=new Map((profiles||[]).map(x=>[x.id,x.username]));
-    alert((logs||[]).map(x=>new Date(x.created_at).toLocaleString()+" — "+x.action+" — @"+(names.get(x.actor_id)||"unknown")+(x.target_user_id?" → @"+(names.get(x.target_user_id)||"unknown"):"")+(x.details?.reason?" ("+x.details.reason+")":"")).join("\\n")||"No audit entries yet.");
+    alert((logs||[]).map(x=>new Date(x.created_at).toLocaleString()+" — "+x.action+" — @"+(names.get(x.actor_id)||"unknown")+(x.target_user_id?" → @"+(names.get(x.target_user_id)||"unknown"):"")+(x.details?.reason?" ("+x.details.reason+")":"")).join("\n")||"No audit entries yet.");
   }else if(action==="14"){
     const {data:invites,error}=await backend.from("chat_invites").select("id,code,created_at,expires_at,uses").eq("server_id",activeChatServerId).order("created_at",{ascending:false}).limit(20);
     if(error){alert(error.message);return;}
     if(!invites?.length){alert("No invites found.");return;}
-    const code=prompt("Enter invite code to revoke:\\n"+invites.map(x=>x.code+" (uses: "+x.uses+")").join("\\n"));if(!code)return;
+    const code=prompt("Enter invite code to revoke:\n"+invites.map(x=>x.code+" (uses: "+x.uses+")").join("\n"));if(!code)return;
     const target=invites.find(x=>x.code===code.trim());if(!target){alert("Invite not found.");return;}
     const {error:removeError}=await backend.from("chat_invites").delete().eq("id",target.id);
     if(removeError)alert(removeError.message);else alert("Invite revoked.");
@@ -3135,7 +3135,7 @@ async function startChat(user) {
       }
 
       if (commandKey === "/rules") {
-        const rulesText = ["Current Chat & Omoggle Rules:", ...CHAT_RULES.map((rule, index) => `${index + 1}. ${rule}`), "", "Breaking any of these rules can result in a ban."].join("\\n");
+        const rulesText = ["Current Chat & Omoggle Rules:", ...CHAT_RULES.map((rule, index) => `${index + 1}. ${rule}`), "", "Breaking any of these rules can result in a ban."].join("\n");
         showLocalSystemMessage(rulesText, false);
         return;
       }
