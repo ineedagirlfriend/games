@@ -3095,6 +3095,11 @@ async function startChat(user) {
     let targetUsernames = [];
     let parsedText = textToSend;
 
+    if (isOmoggleCommand && segments.length < 2) {
+      showLocalSystemMessage("Usage: /omoggle @username — send a private Omoggle duel invitation.", true);
+      return;
+    }
+
     if (isWhisperCommand || isOmoggleCommand) {
       let i = 1;
       while (i < segments.length) {
@@ -3139,15 +3144,27 @@ async function startChat(user) {
       if (targetUsernames.length > 0) {
         let participantIds = [user.id];
 
-        targetUsernames.forEach(uname => {
-          const matchedUser = localUsersCache.find(u => u.username.toLowerCase() === uname);
-          if (matchedUser && !participantIds.includes(matchedUser.id)) {
+        for (const uname of targetUsernames) {
+          let matchedUser = localUsersCache.find(u => u.username && u.username.toLowerCase() === uname);
+          if (!matchedUser) {
+            const { data: databaseUser, error: lookupError } = await backend
+              .from("users")
+              .select("id, username")
+              .ilike("username", uname)
+              .maybeSingle();
+            if (lookupError) throw lookupError;
+            matchedUser = databaseUser;
+          }
+
+          if (matchedUser && matchedUser.id !== user.id && !participantIds.includes(matchedUser.id)) {
             participantIds.push(matchedUser.id);
           }
-        });
+        }
 
         if (participantIds.length === 1) {
-          throw new Error("No valid recipients found with those usernames in your local cache maps.");
+          throw new Error(isOmoggleCommand
+            ? "Couldn't find that username. Check the spelling and try /omoggle @username."
+            : "No valid recipients found with those usernames.");
         }
 
         const challengePayload = {
