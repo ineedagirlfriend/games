@@ -930,7 +930,7 @@ async function loadServerDM(user){
   document.querySelector(".channel-title strong").textContent="Server DM";
   document.getElementById("active-server-name").textContent="Server DM";
   const {data:items,error}=await backend.from("whispers")
-    .select("id,text,username,userId,senderId,avatar,role,timestamp,type,room_id,participants,isOmoggleInvite,inviteStatus,server_id,channel_id")
+    .select("id,text,username,userId,senderId,avatar,role,timestamp,type,room_id,participants,isOmoggleInvite,inviteStatus,server_id")
     .contains("participants",[user.id])
     .order("timestamp",{ascending:true}).limit(300);
   if(error){uiAlert("Could not load your Server DM: "+error.message);return;}
