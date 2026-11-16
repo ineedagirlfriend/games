@@ -960,13 +960,22 @@ async function openChatUserPicker({title="Select people",description="Search for
 
 
 async function openChatActionMenu(title,description,options){
-  const content=document.createElement("div");content.style.cssText="display:grid;gap:8px";
   return new Promise(resolve=>{
-    let settled=false;const finish=value=>{if(settled)return;settled=true;document.querySelector(".chat-ui-backdrop")?.remove();resolve(value);};
-    for(const option of options){const b=document.createElement("button");b.type="button";b.className="chat-ui-btn";b.style.cssText="text-align:left;width:100%;display:flex;justify-content:space-between;align-items:center";b.textContent=option.label;if(option.danger)b.classList.add("danger");b.addEventListener("click",()=>finish(option.value));content.appendChild(b);}
-    openChatModal(title,description,content,[{label:"Close",value:null}]).then(value=>{if(!settled)finish(value);});
+    const backdrop=document.createElement("div");backdrop.className="chat-ui-backdrop";
+    const modal=document.createElement("section");modal.className="chat-ui-modal";modal.setAttribute("role","dialog");modal.setAttribute("aria-modal","true");
+    const head=document.createElement("div");head.className="chat-ui-head";const h=document.createElement("h2");h.textContent=title;head.appendChild(h);
+    if(description){const p=document.createElement("p");p.textContent=description;head.appendChild(p);}
+    const body=document.createElement("div");body.className="chat-ui-body";body.style.cssText="display:grid;gap:8px";
+    const footer=document.createElement("div");footer.className="chat-ui-footer";
+    const finish=value=>{backdrop.remove();resolve(value);};
+    for(const option of options){const button=document.createElement("button");button.type="button";button.className="chat-ui-btn";button.style.cssText="text-align:left;width:100%;display:flex;justify-content:space-between;align-items:center";button.textContent=option.label;if(option.danger)button.classList.add("danger");button.addEventListener("click",()=>finish(option.value));body.appendChild(button);}
+    const close=document.createElement("button");close.type="button";close.className="chat-ui-btn";close.textContent="Close";close.addEventListener("click",()=>finish(null));footer.appendChild(close);
+    modal.append(head,body,footer);backdrop.appendChild(modal);backdrop.addEventListener("click",e=>{if(e.target===backdrop)finish(null);});
+    const onKey=e=>{if(e.key==="Escape"&&backdrop.isConnected){document.removeEventListener("keydown",onKey);finish(null);}};document.addEventListener("keydown",onKey);
+    document.body.appendChild(backdrop);
   });
 }
+
 async function uiPrompt(message,defaultValue=""){
   const field=chatModalField(message,String(defaultValue??""),"");
   const result=await openChatModal("NAGames", "", field.wrap,[{label:"Cancel",value:null},{label:"Continue",value:"ok",primary:true}]);
