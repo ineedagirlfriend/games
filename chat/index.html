@@ -3231,21 +3231,27 @@ function updateAutocompleteCacheFromLoadedMessages() {
 
   let allMessages = [...dbHistoricalMessages, ...dbPublicMessages, ...dbPrivateMessages];
   allMessages.forEach(msg => {
+    // System/moderation messages often use username="Server" while retaining
+    // the initiating user's ID. Never let those messages overwrite a real
+    // account's username or role in the mention autocomplete cache.
+    const messageUsername = String(msg.username || "").trim();
+    if (!messageUsername || messageUsername.toLowerCase() === "server") return;
+
     if (msg.userId && msg.username) {
       const cachedUser = uniqueUsers.get(msg.userId);
       uniqueUsers.set(msg.userId, {
         ...cachedUser,
         id: msg.userId,
-        username: msg.username,
-        avatar: msg.avatar || msg.username[0].toUpperCase()
+        username: cachedUser?.username || msg.username,
+        avatar: cachedUser?.avatar || msg.avatar || msg.username[0].toUpperCase()
       });
     } else if (msg.senderId && msg.username) {
       const cachedUser = uniqueUsers.get(msg.senderId);
       uniqueUsers.set(msg.senderId, {
         ...cachedUser,
         id: msg.senderId,
-        username: msg.username,
-        avatar: msg.avatar || msg.username[0].toUpperCase()
+        username: cachedUser?.username || msg.username,
+        avatar: cachedUser?.avatar || msg.avatar || msg.username[0].toUpperCase()
       });
     }
   });
