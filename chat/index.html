@@ -881,7 +881,7 @@ const EX_COMMANDS = [
   { name: "/poll", desc: "Create a timed poll {/poll create 1d mc title=Question?, option 1, option 2} (Admin/Owner)" },
   { name: "/who", desc: "List users currently known to chat {/who}" },
   { name: "/grade", desc: "Set your grade tag {/grade 6th/7th/8th/9th/10th/11th/12th or none}" },
-  { name: "/tag", desc: "Manage custom tags {/tag give @user crazy red}" },
+  { name: "/tag", desc: "Manage your own tags, or manage others' tags (Admin/Owner) {/tag give @me cool purple}" },
   { name: "/tags", desc: "View a user's tags {/tags @user}" },
   { name: "/admin", desc: "Promote a user to Admin {/admin @user}" },
   { name: "/ban", desc: "Ban a user for a duration {/ban @user time reason}" },
@@ -2591,6 +2591,15 @@ async function startChat(user) {
       async function resolveTargetUser() {
         if (targetUsernames.length === 0) return null;
         const searchName = targetUsernames[0];
+        if (["me", "self"].includes(searchName) || searchName === currentUsername.toLowerCase()) {
+          return {
+            id: currentUser.id,
+            username: currentUsername,
+            role: currentUserRole,
+            grade: currentUserGrade,
+            tags: currentUserTags
+          };
+        }
 
         let found = localUsersCache.find(u => u.username && u.username.toLowerCase() === searchName);
         if (found) return found;
@@ -2657,7 +2666,7 @@ async function startChat(user) {
       if (commandKey === "/help") {
         const available = EX_COMMANDS.filter(command => {
           if (["/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/clearstorage"].includes(command.name)) return isOwnerOnly;
-          if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tag", "/tags", "/modlogs", "/serverinfo", "/stats", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
+          if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tags", "/modlogs", "/serverinfo", "/stats", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
           return true;
         }).map(command => `${command.name} - ${command.desc}`).join(" | ");
         showLocalSystemMessage(available, false);
@@ -2698,14 +2707,19 @@ async function startChat(user) {
         return;
       }
 
-      if (commandKey === "/tag" && isAdminPlus) {
+      if (commandKey === "/tag") {
         const action = effectiveSegments[1]?.toLowerCase();
         const targetUser = await resolveTargetUser();
         if (!targetUser || !["give", "remove", "clear"].includes(action)) {
-          showLocalSystemMessage("Syntax: /tag give @user tag-name color | /tag remove @user tag-name | /tag clear @user", true);
+          showLocalSystemMessage("Syntax: /tag give @me tag-name color | /tag remove @me tag-name | /tag clear @me. Admins/Owners can target other users.", true);
           return;
         }
-        if (!checkRoleHierarchy(targetUser)) return;
+        const isSelfTagging = targetUser.id === currentUser.id;
+        if (!isSelfTagging && !isAdminPlus) {
+          showLocalSystemMessage("You can only manage your own tags. Admins and Owners can manage other users' tags.", true);
+          return;
+        }
+        if (!isSelfTagging && !checkRoleHierarchy(targetUser)) return;
         const { data: targetProfile } = await backend.from("users").select("tags, grade, username").eq("id", targetUser.id).maybeSingle();
         let tags = normalizeProfileTags(targetProfile?.tags);
         if (action === "clear") {
@@ -2723,8 +2737,11 @@ async function startChat(user) {
         }
         const { error } = await backend.from("users").update({ tags }).eq("id", targetUser.id);
         if (error) { showLocalSystemMessage(`Failed to update @${targetUser.username}'s tags: ${error.message}`, true); return; }
-        showLocalSystemMessage(`Updated tags for @${targetUser.username}.`, false);
-        await logModeratorEvent(`@${currentUsername} used /tag ${action} on @${targetUser.username}.`);
+        showLocalSystemMessage(isSelfTagging ? "Your tags have been updated." : `Updated tags for @${targetUser.username}.`, false);
+        if (!isSelfTagging) {
+          await logModeratorEvent(`@${currentUsername} used /tag ${action} on @${targetUser.username}.`);
+        }
+        if (isSelfTagging) currentUserTags = tags;
         await loadAndCacheAllUsers();
         renderMessages(true);
         return;
@@ -4098,7 +4115,7 @@ function setupAutocompleteEngine(input) {
     }
 
     const baseCommandContext = words[0].toLowerCase();
-    const targetAutocompleteCommands = ["/w", "/whisper", "/omoggle", "/privatevc", "/mute", "/unmute", "/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/ban", "/unban", "/permaban", "/kick", "/warn", "/userinfo"];
+    const targetAutocompleteCommands = ["/w", "/whisper", "/omoggle", "/privatevc", "/tag", "/mute", "/unmute", "/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/ban", "/unban", "/permaban", "/kick", "/warn", "/userinfo"];
 
     if (targetAutocompleteCommands.includes(baseCommandContext)) {
       let isTargetingPhase = true;
