@@ -950,7 +950,7 @@ async function manageDMConversation(user){
     const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
     const targetName=prompt("Username to block: "+(profiles||[]).map(x=>x.username).join(", "));if(!targetName)return;
     const target=(profiles||[]).find(x=>x.username.toLowerCase()===targetName.replace(/^@/,"").toLowerCase());if(!target){alert("Member not found.");return;}
-    const {error}=await backend.from("chat_user_blocks").upsert({blocker_id:user.id,blocked_id:target.id});if(error)alert(error.message);else{await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId);await showDMList(user);alert("User blocked.");}
+    const {error}=await backend.from("chat_user_blocks").insert({blocker_id:user.id,blocked_id:target.id});if(error)alert(error.message);else{await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);await showDMList(user);alert("User blocked.");}
   }
 }
 
@@ -960,6 +960,7 @@ function setActiveChatTitle(channel) {
 }
 
 async function loadChatNavigation(user) {
+  if (isDMView) { await removeBackendChannel(dmRealtimeChannel); dmRealtimeChannel=null; activeChatConversationId=null; activeDMConversation=null; }
   isDMView = false;
   const rail = document.getElementById("server-sidebar");
   const list = document.getElementById("channel-list");
@@ -983,7 +984,7 @@ async function loadChatNavigation(user) {
     b.addEventListener("click",async()=>{activeChatServerId=server.id;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);});
     rail.appendChild(b);
   }
-  document.getElementById("create-server-btn")?.addEventListener("click",()=>createChatServer(user));
+  document.getElementById("create-server-btn")?.addEventListener("click",()=>createOrJoinChatServer(user));
   activeChatServer=rows.find(s=>s.id===activeChatServerId);
   document.getElementById("active-server-name").textContent=activeChatServer?.name||"Server";
   const {data:channels,error:channelError}=await backend.from("chat_channels").select("id,name,channel_type,topic,position,is_private").eq("server_id",activeChatServerId).order("position");
@@ -1008,6 +1009,17 @@ async function switchChatChannel(id,user){
   document.querySelectorAll(".channel-row").forEach((el,i)=>el.classList.toggle("active",activeChatChannels[i]?.id===id));
   dbPublicMessages=[]; dbHistoricalMessages=[]; historyPageOffset=0; allMessagesLoaded=false;
   await listenForNewMessages(user||currentUser);
+}
+
+async function createOrJoinChatServer(user){
+  const choice=prompt("Servers:\n1 Create a server\n2 Join with an invite code");
+  if(choice==="2"){
+    const code=prompt("Enter server invite code:");if(!code)return;
+    const {data,error}=await backend.rpc("join_chat_server",{p_code:code.trim()});
+    if(error){alert(error.message);return;}
+    activeChatServerId=data;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);return;
+  }
+  if(choice==="1")return createChatServer(user);
 }
 
 async function createChatServer(user){
@@ -1064,7 +1076,18 @@ async function manageChatServer(user){
       await backend.from("chat_audit_log").insert({server_id:activeChatServerId,actor_id:user.id,action:"member_banned",target_user_id:target.id,details:{reason}});
       alert(target.username+" was banned from this server.");
     }else{const result=await backend.from("chat_server_bans").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);if(result.error)alert(result.error.message);else alert("Server ban removed.");}
+  }else if(action==="8"){
+    const expires=prompt("Invite expiry in hours (0 = never):","0");if(expires===null)return;
+    const hours=Number(expires);if(!Number.isFinite(hours)||hours<0){alert("Enter 0 or a positive number.");return;}
+    const {data,error}=await backend.from("chat_invites").insert({server_id:activeChatServerId,created_by:user.id,expires_at:hours?new Date(Date.now()+hours*3600000).toISOString():null}).select("code").single();
+    if(error)alert(error.message);else{const link=location.origin+"/chat/?invite="+encodeURIComponent(data.code);try{await navigator.clipboard.writeText(link);alert("Invite link copied:\n"+link);}catch(_){prompt("Copy this invite link:",link);}}
+  }else if(action==="9"){
+    const name=prompt("New role name:");if(!name||!name.trim())return;
+    const color=prompt("Role color in #RRGGBB format:","#7289da")||"#7289da";
+    const {error}=await backend.from("chat_server_roles").insert({server_id:activeChatServerId,name:name.trim(),color,permissions:{view_channels:true,send_messages:true,add_reactions:true}});
+    if(error)alert(error.message);else alert("Role created. Advanced permission editing and member assignment are still being built.");
   }else if(action==="6"){
+    if(activeChatServer.is_system){alert("You cannot leave the main NA server.");return;}
     if(activeChatServer.owner_id===user.id){alert("Transfer ownership or delete the server before leaving it.");return;}
     if(confirm("Leave this server?")){await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",user.id);activeChatServerId="10000000-0000-4000-8000-000000000001";activeChatChannelId="10000000-0000-4000-8000-000000000003";await loadChatNavigation(user);await switchChatChannel(activeChatChannelId,user);}
   }else if(action==="7"){
@@ -2785,15 +2808,15 @@ async function startChat(user) {
     let textToSend = input.value.trim();
     if (!textToSend) return;
 
+    if (currentUserMutedUntil && Date.now() < currentUserMutedUntil) {
+      startCooldownTimer(currentUserMutedUntil);
+      return;
+    }
+
     if (isDMView && activeChatConversationId) {
       const { error } = await backend.from("chat_dm_messages").insert({conversation_id:activeChatConversationId,sender_id:currentUser.id,content:textToSend});
       if (error) { showLocalSystemMessage(error.message || "Could not send DM.", true); return; }
       input.value = "";
-      return;
-    }
-
-    if (currentUserMutedUntil && Date.now() < currentUserMutedUntil) {
-      startCooldownTimer(currentUserMutedUntil);
       return;
     }
 
