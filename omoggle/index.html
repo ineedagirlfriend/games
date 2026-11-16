@@ -8,7 +8,7 @@
 <script>
     // Chat and Omoggle are unavailable until the shared rules have been accepted.
     try {
-      if (localStorage.getItem("cg-chat-rules-accepted-v1") !== "1") {
+      if (localStorage.getItem("cg-chat-rules-accepted-v1") !== "4") {
         window.location.replace("../chat/?rules=required");
       }
     } catch (_) {
@@ -145,7 +145,7 @@
     import { createClient } from "../assets/backend-client.js";
     import { AuraEngine } from "./auraEngine.js";
 
-    if (localStorage.getItem("cg-chat-rules-accepted-v1") !== "1") {
+    if (localStorage.getItem("cg-chat-rules-accepted-v1") !== "4") {
       window.location.replace("../chat/?rules=required");
       throw new Error("Rules agreement required before Omoggle.");
     }
