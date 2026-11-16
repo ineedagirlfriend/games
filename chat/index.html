@@ -1461,7 +1461,7 @@ function showGradePicker(force = false) {
 function showSchoolPicker(force = false) {
   if (!currentUser) return Promise.resolve();
   const existingSchoolTag = currentUserTags.find(tag => tag.type === "school");
-  const savedSchool = existingSchoolTag?.label || localStorage.getItem("carsongames-school-" + currentUser.id) || "";
+  const savedSchool = existingSchoolTag?.label || "";
   if (!force && SCHOOL_TAGS[savedSchool]) return Promise.resolve();
 
   return new Promise(resolve => {
@@ -1479,8 +1479,6 @@ function showSchoolPicker(force = false) {
         const nextTags = currentUserTags.filter(tag => tag.type !== "school");
         nextTags.push({ label: school, color: SCHOOL_TAGS[school].color, type: "school" });
         const { error } = await backend.from("users").update({ tags: nextTags }).eq("id", currentUser.id);
-        currentUserTags = normalizeProfileTags(nextTags);
-        localStorage.setItem("carsongames-school-" + currentUser.id, school);
         const cachedUser = allRegisteredUsers.find(item => item.id === currentUser.id) || localUsersCache.find(item => item.id === currentUser.id);
         if (cachedUser) cachedUser.tags = currentUserTags;
         if (error) {
@@ -1490,6 +1488,9 @@ function showSchoolPicker(force = false) {
           button.disabled = false;
           return;
         }
+        currentUserTags = normalizeProfileTags(nextTags);
+        localStorage.setItem("carsongames-school-" + currentUser.id, school);
+        if (cachedUser) cachedUser.tags = currentUserTags;
         overlay.remove();
         renderMessages(true);
         resolve();
