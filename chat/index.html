@@ -938,7 +938,7 @@ async function loadServerDM(user){
   const serverIds=[...new Set(relevant.map(m=>m.server_id).filter(Boolean))];
   const {data:servers}=serverIds.length?await backend.from("chat_servers").select("id,name").in("id",serverIds):{data:[]};
   const serverNames=new Map((servers||[]).map(x=>[x.id,x.name]));
-  dbPublicMessages=relevant.map(m=>({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"?"Server":m.username||"Server",text:(m.type==="mod_log"&&m.server_id?"["+ (serverNames.get(m.server_id)||"Server") +" staff log] ":"")+m.text,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()}));
+  dbPublicMessages=relevant.map(m=>({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"||m.type==="server_notice"?"Server":m.username||"Server",text:((m.type==="mod_log"||m.type==="server_notice")&&m.server_id?"["+ (serverNames.get(m.server_id)||"Server") +" · "+(m.type==="mod_log"?"staff log":"notice")+"] ":"")+m.text,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()}));
   renderMessages(true);
   dmRealtimeChannel=backend.channel("server-dm:"+user.id)
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"whispers"},async payload=>{
@@ -946,7 +946,7 @@ async function loadServerDM(user){
       if(!m.participants?.includes(user.id)||!(m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice"))return;
       if(dbPublicMessages.some(x=>x.id===m.id))return;
       let text=m.text||"";
-      if(m.type==="mod_log"&&m.server_id){const {data:server}=await backend.from("chat_servers").select("name").eq("id",m.server_id).maybeSingle();text="["+(server?.name||"Server")+" staff log] "+text;}
+      if((m.type==="mod_log"||m.type==="server_notice")&&m.server_id){const {data:server}=await backend.from("chat_servers").select("name").eq("id",m.server_id).maybeSingle();text="["+(server?.name||"Server")+" · "+(m.type==="mod_log"?"staff log":"notice")+"] "+text;}
       dbPublicMessages.push({...m,text,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"?"Server":m.username||"Server",timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()});
       renderMessages(true);
     })
@@ -1969,6 +1969,12 @@ function showLocalSystemMessage(text, isError = false) {
     timestamp: new Date().toISOString()
   });
   renderMessages(true);
+  if(isError&&currentUser?.id){
+    void backend.from("whispers").insert([{
+      text:String(text),username:"Server",senderId:currentUser.id,participants:[currentUser.id],
+      type:"server_notice",role:"system",server_id:activeChatServerId||null
+    }]).then(({error})=>{if(error)console.warn("Could not save personal Server DM notice:",error);});
+  }
 }
 
 
