@@ -965,13 +965,13 @@ async function openChatActionMenu(title,description,options){
     const head=document.createElement("div");head.className="chat-ui-head";const h=document.createElement("h2");h.textContent=title;head.appendChild(h);
     if(description){const p=document.createElement("p");p.textContent=description;head.appendChild(p);}
     const body=document.createElement("div");body.className="chat-ui-body";body.style.cssText="display:grid;gap:8px";
-    const footer=document.createElement("div");footer.className="chat-ui-footer";
-    const finish=value=>{backdrop.remove();resolve(value);};
+    const footer=document.createElement("div");footer.className="chat-ui-footer";let settled=false;
+    const onKey=e=>{if(e.key==="Escape")finish(null);};
+    const finish=value=>{if(settled)return;settled=true;document.removeEventListener("keydown",onKey);backdrop.remove();resolve(value);};
     for(const option of options){const button=document.createElement("button");button.type="button";button.className="chat-ui-btn";button.style.cssText="text-align:left;width:100%;display:flex;justify-content:space-between;align-items:center";button.textContent=option.label;if(option.danger)button.classList.add("danger");button.addEventListener("click",()=>finish(option.value));body.appendChild(button);}
     const close=document.createElement("button");close.type="button";close.className="chat-ui-btn";close.textContent="Close";close.addEventListener("click",()=>finish(null));footer.appendChild(close);
     modal.append(head,body,footer);backdrop.appendChild(modal);backdrop.addEventListener("click",e=>{if(e.target===backdrop)finish(null);});
-    const onKey=e=>{if(e.key==="Escape"&&backdrop.isConnected){document.removeEventListener("keydown",onKey);finish(null);}};document.addEventListener("keydown",onKey);
-    document.body.appendChild(backdrop);
+    document.addEventListener("keydown",onKey);document.body.appendChild(backdrop);
   });
 }
 
