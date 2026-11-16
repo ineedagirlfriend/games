@@ -938,7 +938,24 @@ async function loadServerDM(user){
   const serverIds=[...new Set(relevant.map(m=>m.server_id).filter(Boolean))];
   const {data:servers}=serverIds.length?await backend.from("chat_servers").select("id,name").in("id",serverIds):{data:[]};
   const serverNames=new Map((servers||[]).map(x=>[x.id,x.name]));
-  dbPublicMessages=relevant.map(m=>({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"||m.type==="server_notice"?"Server":m.username||"Server",text:((m.type==="mod_log"||m.type==="server_notice")&&m.server_id?"["+ (serverNames.get(m.server_id)||"Server") +" · "+(m.type==="mod_log"?"staff log":"notice")+"] ":"")+m.text,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()}));
+  const inboxMessages=relevant.map(m=>({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"||m.type==="server_notice"?"Server":m.username||"Server",text:((m.type==="mod_log"||m.type==="server_notice")&&m.server_id?"["+ (serverNames.get(m.server_id)||"Server") +" · "+(m.type==="mod_log"?"staff log":"notice")+"] ":"")+m.text,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()}));
+  const {data:auditRows,error:auditError}=await backend.from("chat_audit_log").select("id,server_id,actor_id,action,target_user_id,details,created_at").order("created_at",{ascending:false}).limit(200);
+  if(auditError)console.warn("Server audit DM logs could not be loaded:",auditError);
+  const auditServerIds=[...new Set((auditRows||[]).map(x=>x.server_id).filter(Boolean))];
+  const auditUserIds=[...new Set((auditRows||[]).flatMap(x=>[x.actor_id,x.target_user_id]).filter(Boolean))];
+  const [{data:auditServers},{data:auditProfiles}]=await Promise.all([
+    auditServerIds.length?backend.from("chat_servers").select("id,name").in("id",auditServerIds):Promise.resolve({data:[]}),
+    auditUserIds.length?backend.from("users").select("id,username").in("id",auditUserIds):Promise.resolve({data:[]})
+  ]);
+  const auditServerNames=new Map((auditServers||[]).map(x=>[x.id,x.name]));
+  const auditUserNames=new Map((auditProfiles||[]).map(x=>[x.id,x.username]));
+  const auditMessages=(auditRows||[]).map(log=>{
+    const target=log.target_user_id? " · @"+(auditUserNames.get(log.target_user_id)||"user"):"";
+    const actor=log.actor_id?"@"+(auditUserNames.get(log.actor_id)||"staff"):"Staff";
+    const detail=log.details&&Object.keys(log.details).length?" · "+JSON.stringify(log.details):"";
+    return {id:"audit-"+log.id,text:"["+(auditServerNames.get(log.server_id)||"Server")+" staff log] "+actor+" "+log.action+target+detail,username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true};
+  });
+  dbPublicMessages=[...inboxMessages,...auditMessages].sort((a,b)=>a.timestamp-b.timestamp);
   renderMessages(true);
   dmRealtimeChannel=backend.channel("server-dm:"+user.id)
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"whispers"},async payload=>{
@@ -963,6 +980,16 @@ async function loadServerDM(user){
     })
     .on("postgres_changes",{event:"DELETE",schema:"public",table:"whispers"},payload=>{
       dbPublicMessages=dbPublicMessages.filter(x=>x.id!==payload.old.id);renderMessages();
+    })
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_audit_log"},async payload=>{
+      const log=payload.new;const [{data:server},{data:profiles}]=await Promise.all([
+        backend.from("chat_servers").select("name").eq("id",log.server_id).maybeSingle(),
+        log.actor_id||log.target_user_id?backend.from("users").select("id,username").in("id",[log.actor_id,log.target_user_id].filter(Boolean)) : Promise.resolve({data:[]})
+      ]);
+      const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
+      const target=log.target_user_id?" · @"+(names.get(log.target_user_id)||"user"):"";
+      dbPublicMessages.push({id:"audit-"+log.id,text:"["+(server?.name||"Server")+" staff log] "+(log.actor_id?"@"+(names.get(log.actor_id)||"staff"):"Staff")+" "+log.action+target+(log.details&&Object.keys(log.details).length?" · "+JSON.stringify(log.details):""),username:"Server",role:"system",timestamp:new Date(log.created_at).getTime(),isSystemMessage:true,isWhisper:false,type:"mod_log",isAuditLog:true});
+      dbPublicMessages.sort((a,b)=>a.timestamp-b.timestamp);renderMessages(true);
     }).subscribe();
 }
 
