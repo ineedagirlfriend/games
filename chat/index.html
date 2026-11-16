@@ -1478,21 +1478,24 @@ function showSchoolPicker(force = false) {
         button.disabled = true;
         const nextTags = currentUserTags.filter(tag => tag.type !== "school");
         nextTags.push({ label: school, color: SCHOOL_TAGS[school].color, type: "school" });
-        const { error } = await backend.from("users").update({ tags: nextTags }).eq("id", currentUser.id);
-        const cachedUser = allRegisteredUsers.find(item => item.id === currentUser.id) || localUsersCache.find(item => item.id === currentUser.id);
-        if (error) {
-          const msg = overlay.querySelector("#school-picker-msg");
-          msg.textContent = "Could not sync the school tag to your account. Please try again.";
-          msg.className = "status-msg status-error";
-          button.disabled = false;
-          return;
-        }
+        const msg = overlay.querySelector("#school-picker-msg");
+        try {
+          const { data: updatedProfile, error } = await backend.from("users").update({ tags: nextTags }).eq("id", currentUser.id).select("id").maybeSingle();
+          if (error) throw error;
+          if (!updatedProfile) throw new Error("Your account profile could not be found or you do not have permission to update it.");
+          const cachedUser = allRegisteredUsers.find(item => item.id === currentUser.id) || localUsersCache.find(item => item.id === currentUser.id);
         currentUserTags = normalizeProfileTags(nextTags);
         localStorage.setItem("carsongames-school-" + currentUser.id, school);
-        if (cachedUser) cachedUser.tags = currentUserTags;
-        overlay.remove();
-        renderMessages(true);
-        resolve();
+          if (cachedUser) cachedUser.tags = currentUserTags;
+          overlay.remove();
+          renderMessages(true);
+          resolve();
+        } catch (error) {
+          console.error("School tag update failed:", error);
+          msg.textContent = error.message || "Could not save the school tag. Please try again.";
+          msg.className = "status-msg status-error";
+          button.disabled = false;
+        }
       };
     });
   });
