@@ -3482,12 +3482,16 @@ function renderMessages(forceScrollDown = false) {
   desiredMessages.forEach((msg, index) => {
     const key = desiredKeys[index] || `fallback:${index}`;
     let node = existingByKey.get(key);
-    if (!node) {
+    const signature = JSON.stringify(msg);
+    if (!node || node.dataset.renderSignature !== signature) {
       const holder = document.createElement("div");
       displayMessage(holder, msg);
-      node = holder.firstElementChild;
-      if (!node) return;
-      node.dataset.renderKey = key;
+      const replacementNode = holder.firstElementChild;
+      if (!replacementNode) return;
+      replacementNode.dataset.renderKey = key;
+      replacementNode.dataset.renderSignature = signature;
+      if (node) node.replaceWith(replacementNode);
+      node = replacementNode;
     } else {
       existingByKey.delete(key);
     }
@@ -4078,8 +4082,6 @@ async function handleScrollPagination() {
     loaderBanner.textContent = "Getting more messages...";
     scroller.insertBefore(loaderBanner, scroller.firstChild);
 
-    const initialScrollHeight = scroller.scrollHeight;
-
     try {
       const { data: olderMessages } = await backend
         .from("messages")
@@ -4100,7 +4102,6 @@ async function handleScrollPagination() {
         dbHistoricalMessages = [...fetchedHistorical, ...dbHistoricalMessages];
 
         renderMessages();
-        scroller.scrollTop = scroller.scrollHeight - initialScrollHeight;
       }
     } catch (err) {
       console.error("Error loading older messages:", err);
