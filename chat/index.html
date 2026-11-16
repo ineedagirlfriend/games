@@ -871,7 +871,8 @@ async function showDMList(user){
   const {data:conversations}=ids.length?await backend.from("chat_conversations").select("id,conversation_type,name,icon_url,created_by,updated_at").in("id",ids).order("updated_at",{ascending:false}):{data:[]};
   const {data:members}=ids.length?await backend.from("chat_conversation_members").select("conversation_id,user_id,last_read_at").in("conversation_id",ids):{data:[]};
   const readTimes=new Map((members||[]).filter(m=>m.user_id===user.id).map(m=>[m.conversation_id,m.last_read_at?new Date(m.last_read_at).getTime():0]));
-  const earliestRead=Math.min(...[...readTimes.values()],0);
+  const readValues=[...readTimes.values()];
+  const earliestRead=readValues.length?Math.min(...readValues):0;
   const {data:recentDMs}=ids.length?await backend.from("chat_dm_messages").select("conversation_id,sender_id,created_at").in("conversation_id",ids).gt("created_at",new Date(earliestRead).toISOString()).order("created_at",{ascending:false}).limit(2000):{data:[]};
   const userIds=[...new Set((members||[]).map(m=>m.user_id))];
   const {data:profiles}=userIds.length?await backend.from("users").select("id,username").in("id",userIds):{data:[]};
