@@ -3404,27 +3404,30 @@ function renderMessages(forceScrollDown = false) {
     handleBannedUserDisplay();
     return;
   }
-
   if (!scroller) return;
 
-  const previousScrollHeight = scroller.scrollHeight;
-  const isPinnedToBottom = previousScrollHeight - scroller.clientHeight <= scroller.scrollTop + 30;
-  const distanceFromBottom = previousScrollHeight - scroller.scrollTop;
+  // Capture the reader's position before touching the DOM. Keep the same
+  // visible message anchored when reading history; only follow new messages
+  // when the reader was already at the bottom.
+  const wasPinnedToBottom =
+    scroller.scrollHeight - scroller.clientHeight <= scroller.scrollTop + 40;
+  const anchor = !wasPinnedToBottom
+    ? [...scroller.children].find(node => node.classList?.contains("msg-block") &&
+        node.getBoundingClientRect().bottom > scroller.getBoundingClientRect().top)
+    : null;
+  const anchorKey = anchor?.dataset.renderKey || null;
+  const anchorOffset = anchor
+    ? anchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top
+    : 0;
 
   updateAutocompleteCacheFromLoadedMessages();
-  scroller.innerHTML = "";
-
-  if (allMessagesLoaded) {
-    const banner = document.createElement("div");
-    banner.style.cssText = "text-align: center; color: var(--text-muted); font-size: 0.85rem; font-weight: 600; padding: 10px 0; width: 100%; margin-bottom: 0.5rem;";
-    banner.textContent = "All messages loaded";
-    scroller.appendChild(banner);
-  }
 
   const regularMessages = [...dbHistoricalMessages, ...dbPublicMessages, ...dbPrivateMessages];
-  const hasRegularMessages = regularMessages.some(msg => !msg.isSystemMessage) || localPendingQueue.some(msg => !msg.isSystemMessage);
+  const hasRegularMessages = regularMessages.some(msg => !msg.isSystemMessage) ||
+    localPendingQueue.some(msg => !msg.isSystemMessage);
   const canSeeLocalSystemMessages = currentUserRole === "admin" || currentUserRole === "owner";
-  const visibleEphemeralMessages = (hasRegularMessages && !canSeeLocalSystemMessages) ? [] : ephemeralSystemMessages;
+  const visibleEphemeralMessages =
+    (hasRegularMessages && !canSeeLocalSystemMessages) ? [] : ephemeralSystemMessages;
   let allMessages = [...visibleEphemeralMessages, ...regularMessages];
 
   if (currentUserRole !== "admin" && currentUserRole !== "owner") {
@@ -3435,8 +3438,9 @@ function renderMessages(forceScrollDown = false) {
   allMessages = allMessages.filter(msg => {
     const msgId = msg.id || msg.clientSideId;
     if (!msgId) return true;
-    if (seenIds.has(msgId)) return false;
-    seenIds.add(msgId);
+    const uniqueKey = `${msg.isWhisper ? "whispers" : "messages"}:${msgId}`;
+    if (seenIds.has(uniqueKey)) return false;
+    seenIds.add(uniqueKey);
     return true;
   });
 
@@ -3449,16 +3453,68 @@ function renderMessages(forceScrollDown = false) {
   const confirmedDbClientIds = new Set(allMessages.map(m => m.clientSideId).filter(Boolean));
   localPendingQueue = localPendingQueue.filter(m => !confirmedDbClientIds.has(m.clientSideId));
 
-  allMessages.forEach(msg => displayMessage(scroller, msg));
-  localPendingQueue.forEach(pendingMsg => displayMessage(scroller, pendingMsg));
+  const desiredMessages = [...allMessages, ...localPendingQueue];
+  const desiredKeys = desiredMessages.map(msg => {
+    const collection = msg.isWhisper ? "whispers" : "messages";
+    const id = msg.id ?? msg.clientSideId;
+    return id != null ? `${collection}:${id}` : null;
+  });
 
-  if (isFirstLoad && dbPublicMessages.length > 0) {
+  // Reuse existing message elements instead of clearing/rebuilding the whole
+  // scroller. This prevents videos/audio from being recreated on every event.
+  const existingByKey = new Map();
+  [...scroller.querySelectorAll(":scope > .msg-block[data-render-key]")].forEach(node => {
+    existingByKey.set(node.dataset.renderKey, node);
+  });
+
+  const desiredNodes = [];
+  if (allMessagesLoaded) {
+    let banner = scroller.querySelector(":scope > [data-render-key='history-loaded-banner']");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.dataset.renderKey = "history-loaded-banner";
+      banner.style.cssText = "text-align: center; color: var(--text-muted); font-size: 0.85rem; font-weight: 600; padding: 10px 0; width: 100%; margin-bottom: 0.5rem;";
+      banner.textContent = "All messages loaded";
+    }
+    desiredNodes.push(banner);
+  }
+
+  desiredMessages.forEach((msg, index) => {
+    const key = desiredKeys[index] || `fallback:${index}`;
+    let node = existingByKey.get(key);
+    if (!node) {
+      const holder = document.createElement("div");
+      displayMessage(holder, msg);
+      node = holder.firstElementChild;
+      if (!node) return;
+      node.dataset.renderKey = key;
+    } else {
+      existingByKey.delete(key);
+    }
+    desiredNodes.push(node);
+  });
+
+  const keep = new Set(desiredNodes);
+  [...scroller.children].forEach(node => {
+    if (!keep.has(node)) node.remove();
+  });
+
+  // Only move nodes when their order actually differs. Appending a new message
+  // therefore leaves all existing media elements mounted and playing.
+  let cursor = scroller.firstElementChild;
+  desiredNodes.forEach(node => {
+    if (node !== cursor) scroller.insertBefore(node, cursor);
+    cursor = node.nextElementSibling;
+  });
+
+  if (wasPinnedToBottom || forceScrollDown && wasPinnedToBottom) {
     scroller.scrollTop = scroller.scrollHeight;
-    isFirstLoad = false;
-  } else if (isPinnedToBottom || forceScrollDown && isPinnedToBottom) {
-    scroller.scrollTop = scroller.scrollHeight;
-  } else {
-    scroller.scrollTop = Math.max(0, scroller.scrollHeight - distanceFromBottom);
+  } else if (anchorKey) {
+    const restoredAnchor = scroller.querySelector(`.msg-block[data-render-key="${CSS.escape(anchorKey)}"]`);
+    if (restoredAnchor) {
+      const newOffset = restoredAnchor.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+      scroller.scrollTop += newOffset - anchorOffset;
+    }
   }
 }
 
