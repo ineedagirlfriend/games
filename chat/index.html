@@ -4120,7 +4120,10 @@ function setupAutocompleteEngine(input) {
     if (targetAutocompleteCommands.includes(baseCommandContext)) {
       let isTargetingPhase = true;
 
-      if (["/mute", "/unmute", "/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/ban", "/unban", "/permaban", "/kick", "/warn", "/userinfo"].includes(baseCommandContext) && currentWordIdx > 1) {
+      if (baseCommandContext === "/tag") {
+        // /tag has an action before its target: /tag give @user ...
+        isTargetingPhase = currentWordIdx === 2;
+      } else if (["/mute", "/unmute", "/admin", "/unadmin", "/owner", "/unowner", "/subscription", "/deleteuser", "/ban", "/unban", "/permaban", "/kick", "/warn", "/userinfo"].includes(baseCommandContext) && currentWordIdx > 1) {
         isTargetingPhase = false;
       } else {
         for (let i = 1; i < currentWordIdx; i++) {
