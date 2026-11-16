@@ -1080,8 +1080,8 @@
         thumbContainer.appendChild(thumb);
       });
 
-      // Render Owner Controls if role is 'owner'
-      if (currentUserRole === 'owner') {
+      // Render elevated controls for Admins and Owners.
+      if (currentUserRole === 'admin' || currentUserRole === 'owner') {
         const ownerSection = document.getElementById("owner-panel-injection-point");
         ownerSection.innerHTML = `
           <div class="settings-section">
