@@ -1,5 +1,5 @@
 /**
- * NA GAMES - Advanced AuraEngine
+ * NAGames - Advanced AuraEngine
  * Omoggle 2026
  *
  * Main scoring philosophy:
