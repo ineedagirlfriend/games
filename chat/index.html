@@ -983,6 +983,14 @@ let privateChannel = null;
 let userProfileChannel = null;
 let avatarIndexByUserId = new Map();
 
+const SCHOOL_TAGS = {
+  "MMS": { label: "MMS", color: "#38bdf8" },
+  "IMS": { label: "IMS", color: "#a78bfa" },
+  "CMS": { label: "CMS", color: "#34d399" },
+  "NAI": { label: "NAI", color: "#fbbf24" },
+  "NASH": { label: "NASH", color: "#fb7185" }
+};
+
 const GRADE_TAGS = {
   "6th": { label: "6th Grade", className: "grade-6th" },
   "7th": { label: "7th Grade", className: "grade-7th" },
@@ -996,8 +1004,8 @@ const GRADE_TAGS = {
 function normalizeProfileTags(tags) {
   if (!Array.isArray(tags)) return [];
   return tags.map(tag => {
-    if (typeof tag === "string") return { label: tag, color: "#c084fc" };
-    return { label: String(tag.label || tag.name || "Tag"), color: tag.color || "#c084fc" };
+    if (typeof tag === "string") return { label: tag, color: "#c084fc", type: "" };
+    return { label: String(tag.label || tag.name || "Tag"), color: tag.color || "#c084fc", type: tag.type || "" };
   }).filter(tag => tag.label).slice(0, 8);
 }
 
@@ -1393,9 +1401,9 @@ function showChatRules() {
           </ul>
         </div>
         <p style="color:#fbbf24;font-size:.82rem;font-weight:700;line-height:1.45;margin:13px 0 17px;">Breaking any of these rules can result in a ban.</p>
-        <div style="display:flex;gap:10px;flex-wrap:wrap;">
-          <button id="chat-rules-agree" type="button" style="flex:1;min-width:130px;padding:12px 18px;border:0;border-radius:8px;background:#16a34a;color:#fff;font:700 1rem var(--font-display);cursor:pointer;">I agree</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;">
           <button id="chat-rules-disagree" type="button" style="flex:1;min-width:130px;padding:12px 18px;border:1px solid var(--border);border-radius:8px;background:var(--surface);color:var(--text);font:700 1rem var(--font-display);cursor:pointer;">I disagree</button>
+          <button id="chat-rules-agree" type="button" style="flex:1;min-width:130px;padding:12px 18px;border:0;border-radius:8px;background:#16a34a;color:#fff;font:700 1rem var(--font-display);cursor:pointer;">I agree</button>
         </div>
       </section>`;
     document.body.appendChild(overlay);
@@ -1442,6 +1450,46 @@ function showGradePicker(force = false) {
         currentUserGrade = grade;
         localStorage.setItem(storageKey, "1");
         localStorage.setItem(`carsongames-grade-${currentUser.id}`, grade);
+        overlay.remove();
+        renderMessages(true);
+        resolve();
+      };
+    });
+  });
+}
+
+function showSchoolPicker(force = false) {
+  if (!currentUser) return Promise.resolve();
+  const existingSchoolTag = currentUserTags.find(tag => tag.type === "school");
+  const savedSchool = existingSchoolTag?.label || localStorage.getItem("carsongames-school-" + currentUser.id) || "";
+  if (!force && SCHOOL_TAGS[savedSchool]) return Promise.resolve();
+
+  return new Promise(resolve => {
+    const existing = document.getElementById("school-picker-overlay");
+    if (existing) existing.remove();
+    const overlay = document.createElement("div");
+    overlay.id = "school-picker-overlay";
+    overlay.style.cssText = "position:fixed;inset:0;z-index:2100;display:flex;align-items:center;justify-content:center;padding:20px;background:rgba(0,0,0,.72);backdrop-filter:blur(8px);";
+    overlay.innerHTML = '<div style="width:min(420px,100%);background:var(--card);border:1px solid var(--border);border-radius:var(--radius-l);padding:2rem;box-shadow:0 24px 70px rgba(0,0,0,.5);"><h2 style="font-family:var(--font-display);font-size:1.5rem;color:#fff;margin-bottom:.5rem;">Choose your school</h2><p style="color:var(--text-muted);margin-bottom:1.25rem;">This adds a school tag beside your name. You can change it later in Settings.</p><div style="display:grid;gap:.65rem;">' + Object.entries(SCHOOL_TAGS).map(([value, tag]) => '<button type="button" data-school="' + value + '" class="btn-primary" style="color:' + tag.color + ';background:transparent;border:1px solid ' + tag.color + ';">' + tag.label + '</button>').join("") + '</div><div id="school-picker-msg" class="status-msg"></div></div>';
+    document.body.appendChild(overlay);
+    overlay.querySelectorAll("[data-school]").forEach(button => {
+      button.onclick = async () => {
+        const school = button.dataset.school;
+        button.disabled = true;
+        const nextTags = currentUserTags.filter(tag => tag.type !== "school");
+        nextTags.push({ label: school, color: SCHOOL_TAGS[school].color, type: "school" });
+        const { error } = await backend.from("users").update({ tags: nextTags }).eq("id", currentUser.id);
+        currentUserTags = normalizeProfileTags(nextTags);
+        localStorage.setItem("carsongames-school-" + currentUser.id, school);
+        const cachedUser = allRegisteredUsers.find(item => item.id === currentUser.id) || localUsersCache.find(item => item.id === currentUser.id);
+        if (cachedUser) cachedUser.tags = currentUserTags;
+        if (error) {
+          const msg = overlay.querySelector("#school-picker-msg");
+          msg.textContent = "Could not sync the school tag to your account. Please try again.";
+          msg.className = "status-msg status-error";
+          button.disabled = false;
+          return;
+        }
         overlay.remove();
         renderMessages(true);
         resolve();
@@ -2422,6 +2470,7 @@ async function startChat(user) {
   if (!currentUserGrade) currentUserGrade = localStorage.getItem(`carsongames-grade-${user.id}`) || "";
   await showGradePicker(!currentUserGrade);
   if (!currentUserGrade) await showGradePicker(true);
+  await showSchoolPicker(true);
   await showChatRules();
 
   listenForNewMessages(user);
