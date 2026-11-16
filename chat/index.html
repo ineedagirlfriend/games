@@ -1158,8 +1158,11 @@ async function manageChatChannel(user){
     const username=prompt(action==="5"?"Username to allow:":"Username to remove access from:");if(!username)return;
     const {data:target}=await backend.from("users").select("id").ilike("username",username.trim()).maybeSingle();if(!target){alert("User not found.");return;}
     if(action==="5"){
-      const {error}=await backend.from("chat_channel_overwrites").upsert({server_id:activeChatServerId,channel_id:channel.id,target_type:"user",target_id:target.id,allow_permissions:{view_channels:true,send_messages:true}});
-      if(error)alert(error.message);else{alert("Member access added.");await loadChatNavigation(user);}
+      const existing=await backend.from("chat_channel_overwrites").select("id").eq("channel_id",channel.id).eq("target_type","user").eq("target_id",target.id).maybeSingle();
+      let result;
+      if(existing.data)result=await backend.from("chat_channel_overwrites").update({allow_permissions:{view_channels:true,send_messages:true}}).eq("id",existing.data.id);
+      else result=await backend.from("chat_channel_overwrites").insert({server_id:activeChatServerId,channel_id:channel.id,target_type:"user",target_id:target.id,allow_permissions:{view_channels:true,send_messages:true}});
+      if(result.error)alert(result.error.message);else{alert("Member access added.");await loadChatNavigation(user);}
     }else{
       const {error}=await backend.from("chat_channel_overwrites").delete().eq("channel_id",channel.id).eq("target_type","user").eq("target_id",target.id);
       if(error)alert(error.message);else{alert("Member access removed.");const previousChannelId=activeChatChannelId;await loadChatNavigation(user);if(activeChatChannelId!==previousChannelId&&activeChatChannelId)await switchChatChannel(activeChatChannelId,user);}
@@ -1204,7 +1207,9 @@ async function manageChatServer(user){
       const duration=prompt("Ban duration in hours (0 = permanent):","0");if(duration===null)return;
       const hours=Number(duration);if(!Number.isFinite(hours)||hours<0){alert("Enter 0 or a positive number.");return;}
       const expires_at=hours?new Date(Date.now()+hours*3600000).toISOString():null;
-      const result=await backend.from("chat_server_bans").upsert({server_id:activeChatServerId,user_id:target.id,banned_by:user.id,reason,expires_at});
+      const banData={server_id:activeChatServerId,user_id:target.id,banned_by:user.id,reason,expires_at};
+      let result=await backend.from("chat_server_bans").insert(banData);
+      if(result.error?.code==="23505")result=await backend.from("chat_server_bans").update({banned_by:user.id,reason,expires_at}).eq("server_id",activeChatServerId).eq("user_id",target.id);
       if(result.error){alert(result.error.message);return;}
       await backend.from("chat_server_members").delete().eq("server_id",activeChatServerId).eq("user_id",target.id);
       await backend.from("chat_audit_log").insert({server_id:activeChatServerId,actor_id:user.id,action:"member_banned",target_user_id:target.id,details:{reason}});
