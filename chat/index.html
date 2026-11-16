@@ -1480,7 +1480,6 @@ function showSchoolPicker(force = false) {
         nextTags.push({ label: school, color: SCHOOL_TAGS[school].color, type: "school" });
         const { error } = await backend.from("users").update({ tags: nextTags }).eq("id", currentUser.id);
         const cachedUser = allRegisteredUsers.find(item => item.id === currentUser.id) || localUsersCache.find(item => item.id === currentUser.id);
-        if (cachedUser) cachedUser.tags = currentUserTags;
         if (error) {
           const msg = overlay.querySelector("#school-picker-msg");
           msg.textContent = "Could not sync the school tag to your account. Please try again.";
