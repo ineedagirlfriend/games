@@ -1088,7 +1088,7 @@ async function manageChatServer(user){
     const color=prompt("Role color in #RRGGBB format:","#7289da")||"#7289da";
     const permissionText=prompt("Enter permissions separated by commas. Available: view_channels,send_messages,add_reactions,manage_messages,manage_channels,manage_roles,kick_members,ban_members,create_invite,view_audit_log,mention_everyone,manage_threads,manage_voice","view_channels,send_messages,add_reactions");
     if(permissionText===null)return;
-    const allowed=["view_channels","send_messages","add_reactions","manage_messages","manage_channels","manage_roles","kick_members","ban_members","create_invite","view_audit_log","mention_everyone","manage_threads","manage_voice"];
+    const allowed=["view_channels","send_messages","add_reactions","manage_messages","manage_channels","manage_roles","kick_members","ban_members","create_invite","view_audit_log","mention_everyone","manage_threads","manage_voice","create_polls"];
     const permissions={};permissionText.split(",").map(x=>x.trim()).filter(Boolean).forEach(key=>{if(allowed.includes(key))permissions[key]=true;});
     const {data:role,error}=await backend.from("chat_server_roles").insert({server_id:activeChatServerId,name:name.trim(),color,position:1,permissions}).select("id").single();
     if(error){alert(error.message);return;}
