@@ -1321,11 +1321,17 @@ function showLocalSystemMessage(text, isError = false) {
 }
 
 
+// Increase this number whenever the rules below are changed.
+// Users who accepted an older version will be asked to review the new rules.
+const CHAT_RULES_VERSION = 1;
 const CHAT_RULES_ACCEPTED_KEY = "cg-chat-rules-accepted-v1";
 
 function hasAcceptedChatRules() {
-  try { return localStorage.getItem(CHAT_RULES_ACCEPTED_KEY) === "1"; }
-  catch (_) { return false; }
+  try {
+    return localStorage.getItem(CHAT_RULES_ACCEPTED_KEY) === String(CHAT_RULES_VERSION);
+  } catch (_) {
+    return false;
+  }
 }
 
 function showChatRules() {
@@ -1357,7 +1363,7 @@ function showChatRules() {
     document.body.appendChild(overlay);
 
     overlay.querySelector("#chat-rules-agree").onclick = () => {
-      try { localStorage.setItem(CHAT_RULES_ACCEPTED_KEY, "1"); } catch (_) {}
+      try { localStorage.setItem(CHAT_RULES_ACCEPTED_KEY, String(CHAT_RULES_VERSION)); } catch (_) {}
       overlay.remove();
       resolve(true);
     };
