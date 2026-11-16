@@ -1047,7 +1047,7 @@ async function createChatChannel(user){
 
 async function manageChatServer(user){
   if(!activeChatServer)return;
-  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server");
+  const action=prompt("Server settings — "+activeChatServer.name+"\n1 Rename\n2 Change description\n3 Change server picture\n4 Ban a member\n5 Unban a member\n6 Leave server\n7 Delete server\n8 Create invite\n9 Create role\n10 Transfer ownership");
   if(!action)return;
   if(action==="1"||action==="2"){
     const field=action==="1"?"name":"description";const value=prompt("New "+field+":",activeChatServer[field]||"");if(value===null)return;
@@ -1084,8 +1084,27 @@ async function manageChatServer(user){
   }else if(action==="9"){
     const name=prompt("New role name:");if(!name||!name.trim())return;
     const color=prompt("Role color in #RRGGBB format:","#7289da")||"#7289da";
-    const {error}=await backend.from("chat_server_roles").insert({server_id:activeChatServerId,name:name.trim(),color,permissions:{view_channels:true,send_messages:true,add_reactions:true}});
-    if(error)alert(error.message);else alert("Role created. Advanced permission editing and member assignment are still being built.");
+    const permissionText=prompt("Enter permissions separated by commas. Available: view_channels,send_messages,add_reactions,manage_messages,manage_channels,manage_roles,kick_members,ban_members,create_invite,view_audit_log,mention_everyone,manage_threads,manage_voice","view_channels,send_messages,add_reactions");
+    if(permissionText===null)return;
+    const allowed=["view_channels","send_messages","add_reactions","manage_messages","manage_channels","manage_roles","kick_members","ban_members","create_invite","view_audit_log","mention_everyone","manage_threads","manage_voice"];
+    const permissions={};permissionText.split(",").map(x=>x.trim()).filter(Boolean).forEach(key=>{if(allowed.includes(key))permissions[key]=true;});
+    const {data:role,error}=await backend.from("chat_server_roles").insert({server_id:activeChatServerId,name:name.trim(),color,position:1,permissions}).select("id").single();
+    if(error){alert(error.message);return;}
+    const username=prompt("Assign this role to which username? (Leave blank to create it without assigning.)");
+    if(username&&username.trim()){
+      const {data:target}=await backend.from("users").select("id").ilike("username",username.trim()).maybeSingle();
+      if(!target){alert("Role created, but that user was not found.");return;}
+      const {error:assignError}=await backend.from("chat_member_roles").insert({server_id:activeChatServerId,user_id:target.id,role_id:role.id,assigned_by:user.id});
+      if(assignError)alert("Role created, but assignment failed: "+assignError.message);
+      else alert("Role created and assigned to @"+username.trim()+".");
+    }else alert("Role created.");
+  }else if(action==="10"){
+    const username=prompt("Username of the new owner (must already be a server member):");if(!username)return;
+    const {data:target}=await backend.from("users").select("id,username").ilike("username",username.trim()).maybeSingle();
+    if(!target){alert("User not found.");return;}
+    if(!confirm("Transfer ownership of "+activeChatServer.name+" to @"+target.username+"? You will lose owner permissions."))return;
+    const {error}=await backend.rpc("transfer_chat_server_owner",{p_server_id:activeChatServerId,p_new_owner:target.id});
+    if(error)alert(error.message);else{alert("Server ownership transferred.");await loadChatNavigation(user);}
   }else if(action==="6"){
     if(activeChatServer.is_system){alert("You cannot leave the main NA server.");return;}
     if(activeChatServer.owner_id===user.id){alert("Transfer ownership or delete the server before leaving it.");return;}
@@ -2732,6 +2751,14 @@ async function startChat(user) {
   await showChatRules();
 
   await loadChatNavigation(user);
+  const inviteCode = new URLSearchParams(location.search).get("invite");
+  if (inviteCode) {
+    const joined = await backend.rpc("join_chat_server", { p_code: inviteCode });
+    if (joined.error) alert("Could not join server: " + joined.error.message);
+    else { activeChatServerId = joined.data; activeChatChannelId = null; }
+    history.replaceState({}, "", location.pathname);
+    await loadChatNavigation(user);
+  }
   listenForNewMessages(user);
   if (!pollExpiryInterval) {
     pollExpiryInterval = setInterval(() => {
