@@ -2571,21 +2571,43 @@ async function startChat(user) {
     if (textToSend.startsWith("/")) {
       const segments = textToSend.split(/\s+/);
       const commandKey = segments[0].toLowerCase();
-      
-      const mentions = textToSend.match(/@[^\s]+/g) || [];
-      let targetUsernames = mentions.map(m => m.substring(1).replace(/[.,!?;:]+$/, '').toLowerCase()).filter(Boolean);
-      
-      let effectiveSegments = [...segments];
-      
+
+      // Match complete usernames (longest first), so @First Last is treated
+      // as one target instead of two separate command arguments.
+      const knownUsernames = [...new Set(localUsersCache.map(u => u.username).filter(Boolean))]
+        .sort((a, b) => b.length - a.length);
+      function extractNamedTargets(source) {
+        const targets = [];
+        let normalized = source;
+        const atMatches = [...source.matchAll(/@/g)].reverse();
+        for (const match of atMatches) {
+          const start = match.index + 1;
+          const tail = source.slice(start);
+          const username = knownUsernames.find(name =>
+            tail.slice(0, name.length).toLowerCase() === name.toLowerCase() &&
+            (tail.length === name.length || /[\\s,!?;:]/.test(tail[name.length]))
+          );
+          if (!username) continue;
+          targets.unshift(username.toLowerCase());
+          normalized = normalized.slice(0, match.index) + "@" + username.replace(/\\s+/g, "_") + normalized.slice(start + username.length);
+        }
+        return { targets, normalized };
+      }
+
+      const extractedTargets = extractNamedTargets(textToSend);
+      let targetUsernames = extractedTargets.targets;
+      let effectiveSegments = extractedTargets.normalized.split(/\\s+/);
+
+      // Keep backwards compatibility with commands that accept an untagged
+      // single-word username.
       if (targetUsernames.length === 0 && segments.length > 1) {
         const firstArg = segments[1];
-        const isDuration = /^\d+(s|m|h|d|w|mo|y)$/i.test(firstArg);
+        const isDuration = /^\\d+(s|m|h|d|w|mo|y)$/i.test(firstArg);
         if (!isDuration && firstArg.length > 0) {
           targetUsernames.push(firstArg.replace(/[.,!?;:]+$/, '').toLowerCase());
           effectiveSegments = [segments[0], '@' + firstArg, ...segments.slice(2)];
         }
       }
-
 
       async function resolveTargetUser() {
         if (targetUsernames.length === 0) return null;
@@ -2825,9 +2847,13 @@ async function startChat(user) {
       }
 
       if (commandKey === "/privatevc") {
-        const mentionsPrivate = textToSend.match(/@[^\s]+/g) || [];
-        let targetUsernamesPrivate = mentionsPrivate.map(m => m.replace("@", "").replace(/[.,!?;:]+$/, '').toLowerCase()).filter(Boolean);
+        const privateTargets = extractNamedTargets(textToSend).targets;
+        let targetUsernamesPrivate = privateTargets;
         
+        if (targetUsernamesPrivate.length === 0) {
+          targetUsernamesPrivate = segments.slice(1).map(value => value.replace(/^@/, "").replace(/[.,!?;:]+$/, "").toLowerCase()).filter(Boolean);
+        }
+
         if (targetUsernamesPrivate.length === 0) {
           let i = 1;
           while (i < segments.length && segments[i].length > 0) {
