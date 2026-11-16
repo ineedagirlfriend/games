@@ -746,6 +746,15 @@
     .server-rail-btn { width:48px; height:48px; min-height:48px; border:1px solid var(--border); border-radius:16px; background:var(--card); color:var(--text); font-weight:900; font-size:15px; cursor:pointer; overflow:hidden; display:grid; place-items:center; }
     .server-rail-btn.active { border-color:var(--accent); border-radius:13px; background:var(--accent-glow); }
     .server-rail-btn img { width:100%; height:100%; object-fit:cover; }
+    .server-rail-btn{position:relative;flex-shrink:0}
+    .server-rail-btn.has-unread::after{content:"";position:absolute;right:-3px;top:50%;transform:translateY(-50%);width:9px;height:22px;border-radius:8px;background:#fff}
+    .server-rail-btn.dm-shortcut{border-radius:50%;background:#17192b}
+    .server-rail-btn.dm-shortcut.active{border-radius:16px}
+    .server-rail-btn.dm-shortcut .dm-shortcut-avatar{width:100%;height:100%;border-radius:inherit;overflow:hidden}
+    .channel-row.has-unread{color:var(--text);font-weight:900}
+    .channel-row .unread-dot{width:8px;height:8px;border-radius:50%;background:#fff;display:inline-block;flex-shrink:0;margin-left:auto}
+    .dm-shortcut-divider{width:34px;height:2px;background:var(--border);flex-shrink:0;margin:2px 0}
+
     .server-rail-btn.add { color:#4ade80; font-size:25px; }
     .channel-sidebar { width:220px; flex:0 0 220px; display:flex; flex-direction:column; min-height:0; background:#0b0c18; border-right:1px solid var(--border); }
     .server-sidebar-head { padding:16px 12px; font-weight:900; border-bottom:1px solid var(--border); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
@@ -894,6 +903,7 @@ async function showDMList(user){
   document.getElementById("open-dms-btn")?.classList.add("active");
   const list=document.getElementById("channel-list");list.innerHTML="";
   const inbox=document.createElement("button");inbox.className="channel-row";inbox.textContent="✉ Server DM · Requests & alerts";inbox.addEventListener("click",()=>loadServerDM(user));list.appendChild(inbox);
+  const serverShortcut=document.createElement("button");serverShortcut.className="server-rail-btn dm-shortcut";serverShortcut.title="Server DM · Requests & alerts";serverShortcut.setAttribute("aria-label",serverShortcut.title);serverShortcut.textContent="✉";serverShortcut.addEventListener("click",()=>loadServerDM(user));rail.appendChild(serverShortcut);
   const {data:links,error}=await backend.from("chat_conversation_members").select("conversation_id").eq("user_id",user.id);
   if(error){console.error("DM list:",error);return;}
   const ids=[...new Set((links||[]).map(x=>x.conversation_id))];
@@ -906,12 +916,20 @@ async function showDMList(user){
   const userIds=[...new Set((members||[]).map(m=>m.user_id))];
   const {data:profiles}=userIds.length?await backend.from("users").select("id,username").in("id",userIds):{data:[]};
   const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
+  const shortcutDivider=document.createElement("div");shortcutDivider.className="dm-shortcut-divider";rail.appendChild(shortcutDivider);
   for(const convo of conversations||[]){
     const people=(members||[]).filter(m=>m.conversation_id===convo.id&&m.user_id!==user.id).map(m=>names.get(m.user_id)||"User");
     const label=convo.name||people.join(", ")||"Direct message";
     const lastRead=readTimes.get(convo.id)||0;
     const unread=(recentDMs||[]).filter(m=>m.conversation_id===convo.id&&m.sender_id!==user.id&&new Date(m.created_at).getTime()>lastRead).length;
-    const b=document.createElement("button");b.className="channel-row";b.textContent="● "+label+(unread?" ("+unread+" new)":"");b.addEventListener("click",()=>loadDMConversation(convo,user));list.appendChild(b);
+    const b=document.createElement("button");b.className="channel-row"+(unread?" has-unread":"");b.innerHTML='<span class="dm-row-avatar"></span><span>'+escapeHtml(label)+'</span>'+(unread?'<span class="unread-dot" aria-label="Unread messages"></span>':"");b.addEventListener("click",()=>loadDMConversation(convo,user));list.appendChild(b);
+    const otherMember=(members||[]).find(m=>m.conversation_id===convo.id&&m.user_id!==user.id);
+    const shortcut=document.createElement("button");shortcut.className="server-rail-btn dm-shortcut";shortcut.title=label+(unread?" · Unread":"");shortcut.setAttribute("aria-label",shortcut.title);
+    const avatar=document.createElement("span");avatar.className="dm-shortcut-avatar";shortcut.appendChild(avatar);
+    if(otherMember)decorateAvatarElement(avatar,otherMember.user_id,names.get(otherMember.user_id)||label,(names.get(otherMember.user_id)||label).slice(0,1).toUpperCase());else avatar.textContent=(label[0]||"D").toUpperCase();
+    if(unread)shortcut.classList.add("has-unread");
+    shortcut.addEventListener("click",()=>loadDMConversation(convo,user));rail.appendChild(shortcut);
+    const rowAvatar=b.querySelector(".dm-row-avatar");if(otherMember&&rowAvatar){rowAvatar.style.cssText="width:28px;height:28px;flex:0 0 28px;border-radius:50%;overflow:hidden";decorateAvatarElement(rowAvatar,otherMember.user_id,names.get(otherMember.user_id)||label,(names.get(otherMember.user_id)||label).slice(0,1).toUpperCase());}
   }
   const create=document.getElementById("create-channel-btn");create.textContent="+ New DM";create.onclick=()=>createChatConversation(user);
   document.getElementById("create-category-btn").style.display="none";
@@ -1117,6 +1135,8 @@ async function loadDMConversation(convo,user){
     if(!dbPublicMessages.some(x=>x.id===m.id)){dbPublicMessages.push({id:m.id,text:m.content,username:p?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:p?.role||"user",timestamp:new Date(m.created_at).getTime(),isDMMessage:true});renderMessages(true);}
   }).subscribe();
   await backend.from("chat_conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",convo.id).eq("user_id",user.id);
+  document.querySelectorAll(".server-rail-btn.dm-shortcut").forEach(button=>{if(button.title.startsWith(label))button.classList.remove("has-unread");});
+  const dmListRow=[...document.querySelectorAll("#channel-list .channel-row")].find(button=>button.textContent.includes(label));dmListRow?.classList.remove("has-unread");
 }
 
 
@@ -1211,14 +1231,19 @@ async function loadChatNavigation(user) {
   const rows = servers || [];
   if (!rows.length) { document.getElementById("active-server-name").textContent="No servers"; return; }
   if (!rows.some(s=>s.id===activeChatServerId)) activeChatServerId=(rows.find(s=>s.is_system)||rows[0]).id;
-  rail.innerHTML='<button class="server-rail-btn" id="open-dms-btn" title="Direct messages">✉</button><button class="server-rail-btn add" id="create-server-btn" title="Create a server">+</button>';
+  rail.innerHTML='<button class="server-rail-btn" id="open-dms-btn" title="Direct messages" aria-label="Direct messages">✉</button><button class="server-rail-btn add" id="create-server-btn" title="Create a server">+</button>';
   document.getElementById("open-dms-btn")?.addEventListener("click",()=>showDMList(user));
+  const unreadSinceKey=id=>"cg-server-read:"+user.id+":"+id;
+  const readByServer=new Map(rows.map(server=>[server.id,Number(localStorage.getItem(unreadSinceKey(server.id))||0)]));
+  const {data:unreadRows}=await backend.from("messages").select("server_id,timestamp,userId,senderId").in("server_id",ids).neq("userId",user.id).order("timestamp",{ascending:false}).limit(1000);
+  const unreadServers=new Set((unreadRows||[]).filter(m=>Number(m.timestamp||0)>(readByServer.get(m.server_id)||0)).map(m=>m.server_id));
   for (const server of rows) {
     const b=document.createElement("button");
     b.className="server-rail-btn"+(server.id===activeChatServerId?" active":"");
     b.title=server.name; b.setAttribute("aria-label",server.name);
     if(server.icon_url) b.innerHTML='<img alt="" src="'+escapeHtml(server.icon_url)+'">';
     else b.textContent=server.is_system?"NA":server.name.slice(0,2).toUpperCase();
+    if(unreadServers.has(server.id))b.classList.add("has-unread");
     b.addEventListener("click",async()=>{clearEphemeralSystemMessages();isDMView=false;isServerDMView=false;activeChatServerId=server.id;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);});
     rail.appendChild(b);
   }
@@ -1259,6 +1284,7 @@ async function loadChatNavigation(user) {
 
 async function switchChatChannel(id,user){
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
+  if(user?.id&&activeChatServerId){localStorage.setItem("cg-server-read:"+user.id+":"+activeChatServerId,String(Date.now()));document.querySelectorAll(".server-rail-btn.has-unread").forEach(b=>{if(b.title===activeChatServer?.name)b.classList.remove("has-unread");});}
   setActiveChatTitle(activeChatChannels.find(c=>c.id===id));
   document.querySelectorAll(".channel-row").forEach(el=>el.classList.toggle("active",el.dataset.channelId===id));
   dbPublicMessages=[]; dbPrivateMessages=[]; dbHistoricalMessages=[]; historyPageOffset=0; allMessagesLoaded=false;
