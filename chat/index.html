@@ -998,8 +998,9 @@ async function showDMList(user){
   rail.querySelectorAll(".dm-shortcut,.dm-shortcut-divider").forEach(el=>el.remove());
   rail.querySelectorAll(".server-rail-btn").forEach(b=>b.classList.remove("active"));
   dmButton?.classList.add("active");
+  document.querySelectorAll("#channel-list .channel-row").forEach(b=>b.classList.remove("active"));
   const list=document.getElementById("channel-list");list.innerHTML="";
-  const inbox=document.createElement("button");inbox.className="channel-row";inbox.textContent="✉ Server DM · Requests & alerts";inbox.addEventListener("click",()=>loadServerDM(user));list.appendChild(inbox);
+  const inbox=document.createElement("button");inbox.className="channel-row";inbox.dataset.serverDmRow="true";inbox.textContent="✉ Server DM · Requests & alerts";inbox.addEventListener("click",()=>loadServerDM(user));list.appendChild(inbox);
   const serverDmReadAt=Number(localStorage.getItem("cg-server-dm-read:"+user.id)||0);
   const {data:serverDmUnreadRows}=await backend.from("whispers").select("timestamp,type,isOmoggleInvite,server_id").contains("participants",[user.id]).order("timestamp",{ascending:false}).limit(300);
   const hasServerDmUnread=(serverDmUnreadRows||[]).some(m=>(m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice")&&Number(m.timestamp||0)>serverDmReadAt);
@@ -1047,7 +1048,10 @@ async function showDMList(user){
 }
 
 async function loadServerDM(user){
-  isDMView=true;isServerDMView=true;activeChatConversationId=null;activeDMConversation=null;
+  isDMView=true;isServerDMView=true;activeChatConversationId=null;activeDMConversation=null;activeChatChannelId=null;activeChatServerId=null;activeChatServer=null;
+  document.getElementById("open-dms-btn")?.classList.add("active");
+  document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll("#channel-list .channel-row").forEach(b=>b.classList.toggle("active",b.dataset.serverDmRow==="true"));
   if(user?.id){localStorage.setItem("cg-server-dm-read:"+user.id,String(Date.now()));document.querySelectorAll(".server-rail-btn.dm-shortcut").forEach(b=>{if(b.dataset.serverDm==="true"||b.title.startsWith("Server DM"))b.remove();});document.querySelectorAll("#channel-list .channel-row").forEach(b=>{if(b.textContent.includes("Server DM"))b.classList.remove("has-unread");});if(!document.querySelector(".server-rail-btn.dm-shortcut"))document.querySelector(".dm-shortcut-divider")?.remove();}
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
@@ -1227,7 +1231,9 @@ async function createChatConversation(user){
 }
 
 async function loadDMConversation(convo,user){
-  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatConversationId=convo.id;activeDMConversation=convo;
+  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=convo.id;activeDMConversation=convo;
+  document.getElementById("open-dms-btn")?.classList.add("active");
+  document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.remove("active"));
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
   await removeBackendChannel(pollsChannel);pollsChannel=null;
@@ -1253,7 +1259,7 @@ async function loadDMConversation(convo,user){
   await backend.from("chat_conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",convo.id).eq("user_id",user.id);
   document.querySelectorAll('.server-rail-btn.dm-shortcut[data-conversation-id="'+convo.id+'"]').forEach(b=>b.remove());
   document.querySelectorAll('#channel-list .channel-row[data-conversation-id="'+convo.id+'"]').forEach(b=>b.classList.remove("has-unread"));
-  document.querySelectorAll("#channel-list .channel-row").forEach(button=>button.classList.toggle("active",button.textContent.includes(label)));
+  document.querySelectorAll("#channel-list .channel-row").forEach(button=>button.classList.toggle("active",button.dataset.conversationId===convo.id));
   document.querySelectorAll(".server-rail-btn.dm-shortcut").forEach(button=>{if(button.dataset.conversationId===convo.id)button.remove();});
   if(!document.querySelector(".server-rail-btn.dm-shortcut"))document.querySelector(".dm-shortcut-divider")?.remove();
   const dmListRow=[...document.querySelectorAll("#channel-list .channel-row")].find(button=>button.textContent.includes(label));dmListRow?.classList.remove("has-unread");
@@ -1382,7 +1388,8 @@ async function loadChatNavigation(user) {
     rail.querySelectorAll(".server-rail-btn").forEach(b=>{if(b.dataset.serverId)b.classList.toggle("active",b.dataset.serverId===activeChatServerId);});
   }
   rail.querySelectorAll(".server-rail-btn:not(#open-dms-btn):not(#create-server-btn)").forEach(b=>{if(b.dataset.serverId)b.classList.toggle("active",b.dataset.serverId===activeChatServerId);});
-  const serverButtons=[...rail.querySelectorAll(".server-rail-btn")].filter(b=>b.title&&b.title!=="Direct messages"&&b.title!=="Create a server");
+  document.getElementById("open-dms-btn")?.classList.remove("active");
+  const serverButtons=[...rail.querySelectorAll(".server-rail-btn:not(.dm-shortcut)")].filter(b=>b.dataset.serverId||b.title&&b.title!=="Direct messages"&&b.title!=="Create a server");
   serverButtons.forEach((b,i)=>{b.dataset.serverId=rows[i]?.id||"";});
     activeChatServer=rows.find(s=>s.id===activeChatServerId);
   document.getElementById("active-server-name").textContent=activeChatServer?.name||"Server";
@@ -1420,6 +1427,8 @@ async function loadChatNavigation(user) {
 
 async function switchChatChannel(id,user){
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
+  document.getElementById("open-dms-btn")?.classList.remove("active");
+  document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.toggle("active",b.dataset.serverId===activeChatServerId));
   if(user?.id&&activeChatServerId){localStorage.setItem("cg-server-read:"+user.id+":"+activeChatServerId,String(Date.now()));chatServerRailCache.unread?.delete(activeChatServerId);document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>{if(b.dataset.serverId===activeChatServerId)b.classList.remove("has-unread");});}
   setActiveChatTitle(activeChatChannels.find(c=>c.id===id));
   document.querySelectorAll(".channel-row").forEach(el=>el.classList.toggle("active",el.dataset.channelId===id));
@@ -1752,7 +1761,7 @@ const EX_COMMANDS = [
   { name: "/admin", desc: "Promote a user to Admin {/admin @user}" },
   { name: "/ban", desc: "Ban a user for a duration {/ban @user time reason}" },
   { name: "/clearstorage", desc: "Delete all chat uploads while keeping profile pictures (Admin/Owner)" },
-  { name: "/deleteall", desc: "Wipe all chat messages and whispers {/deleteall}" },
+  { name: "/deleteall", desc: "Clear messages in the currently selected server channel only {/deleteall}" },
   { name: "/deleteuser", desc: "Delete a user from the database {/deleteuser @user}" },
   { name: "/modlogs", desc: "View recent moderator audit events {/modlogs}" },
   { name: "/serverinfo", desc: "View chat server statistics {/serverinfo}" },
@@ -4041,10 +4050,20 @@ async function startChat(user) {
       }
 
       if (commandKey === "/deleteall" && isAdminPlus) {
-        await backend.from("messages").delete().not('id', 'is', null);
-        await backend.from("whispers").delete().not('id', 'is', null);
-        showLocalSystemMessage("Database messages and whispers wiped. Profile pictures and storage files were not changed.", false);
-        await logModeratorEvent(`@${currentUsername} used /deleteall.`);
+        if (isDMView || !activeChatServerId || !activeChatChannelId) {
+          showLocalSystemMessage("/deleteall only works inside a selected server channel. It never deletes DMs or Server DM alerts.", true);
+          return;
+        }
+        const confirmed = await uiConfirm("Delete every message in #"+(activeChatChannels.find(c=>c.id===activeChatChannelId)?.name||"this channel")+"? This affects only this channel in this server. This cannot be undone.");
+        if (!confirmed) return;
+        const {error:deleteError,count} = await backend.from("messages").delete({count:"exact"}).eq("server_id",activeChatServerId).eq("channel_id",activeChatChannelId).select("id");
+        if (deleteError) {
+          showLocalSystemMessage("Could not clear this channel: "+deleteError.message, true);
+          return;
+        }
+        dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages(true);
+        showLocalSystemMessage("Cleared "+(count??"all")+" message(s) from this channel only.", false);
+        await logModeratorEvent(`@${currentUsername} cleared messages in channel ${activeChatChannelId} on server ${activeChatServerId}.`);
         return;
       }
 
