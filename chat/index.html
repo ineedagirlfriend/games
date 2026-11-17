@@ -598,7 +598,8 @@
     .badge-owner { color: #f59e0b; font-size: 0.72rem; background: rgba(245,158,11,0.12); padding: 2px 6px; border-radius: 99px; font-weight: 700; border: 1px solid rgba(245,158,11,0.2); text-transform: uppercase; margin-left: 4px; -webkit-text-fill-color: currentColor; }
     .profile-tag { font-size: 0.7rem; padding: 2px 7px; border-radius: 99px; font-weight: 700; border: 1px solid currentColor; margin-left: 4px; -webkit-text-fill-color: currentColor; }
     .profile-tag-rainbow {
-      position: relative; display: inline-block; overflow: hidden; isolation: isolate;
+      position: relative; display: inline-block; vertical-align: -0.12em; line-height: inherit;
+      overflow: hidden; isolation: isolate;
       color: #fff !important; -webkit-text-fill-color: #fff !important;
       border: 1px solid rgba(255,255,255,.8) !important;
       background: linear-gradient(110deg,#ff3030,#ff9d00,#fff000,#39e65a,#16c8ff,#6554ff,#d83cff,#ff3030);
@@ -5140,7 +5141,10 @@ function setupAutocompleteEngine(input) {
           const item = document.createElement("div");
           item.className = "suggestion-item" + (idx === 0 ? " selected" : "");
           const textColor = ["yellow","lemon","lime","mint","turquoise","aqua","white","ivory","cream","silver","beige","tan","peach","apricot"].includes(name) ? "#171717" : "#ffffff";
-          item.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 11px;border-radius:7px;background:' + hex + ';color:' + textColor + ';font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.25)">' + name + '</span>';
+          const swatchBackground = name === "rainbow"
+            ? "linear-gradient(110deg,#ff3030,#ff9d00,#fff000,#39e65a,#16c8ff,#6554ff,#d83cff)"
+            : hex;
+          item.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 11px;border-radius:7px;background:' + swatchBackground + ';color:' + (name === "rainbow" ? "#ffffff" : textColor) + ';font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.25)">' + name + '</span>';
           attachTapOrScrollHandler(item, (e) => {
             e.preventDefault();
             e.stopPropagation();
