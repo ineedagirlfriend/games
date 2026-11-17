@@ -3674,8 +3674,17 @@ async function startChat(user) {
           if (action === "remove") {
             tags = tags.filter(tag => tag.label.toLowerCase() !== label.toLowerCase());
           } else {
-            const colorNames = { red: "#f87171", blue: "#60a5fa", green: "#4ade80", yellow: "#facc15", pink: "#f472b6", purple: "#c084fc", white: "#f8fafc" };
-            const color = colorNames[(effectiveSegments[4] || "purple").toLowerCase()] || (effectiveSegments[4] || "#c084fc");
+            const colorNames = {
+red:"#ef4444",crimson:"#dc143c",scarlet:"#ff2400",maroon:"#800000",burgundy:"#800020",ruby:"#e0115f",coral:"#ff7f50",salmon:"#fa8072",tomato:"#ff6347",
+orange:"#f97316",tangerine:"#f28500",amber:"#ffbf00",gold:"#ffd700",golden:"#daa520",mustard:"#e1ad01",yellow:"#facc15",lemon:"#fff44f",
+lime:"#a3e635",chartreuse:"#7fff00",green:"#22c55e",emerald:"#50c878",jade:"#00a86b",mint:"#98ff98",teal:"#14b8a6",turquoise:"#40e0d0",aqua:"#00ffff",cyan:"#06b6d4",
+blue:"#3b82f6",azure:"#007fff",cerulean:"#2a52be",cobalt:"#0047ab",indigo:"#4b0082",navy:"#000080",violet:"#8b5cf6",purple:"#a855f7",lavender:"#b57edc",lilac:"#c8a2c8",magenta:"#ff00ff",fuchsia:"#ff00ff",orchid:"#da70d6",plum:"#dda0dd",mauve:"#e0b0ff",
+pink:"#ec4899",hotpink:"#ff69b4",rose:"#ff007f",blush:"#de5d83",peach:"#ffcba4",apricot:"#fbceb1",
+brown:"#8b4513",chocolate:"#7b3f00",cocoa:"#d2691e",coffee:"#6f4e37",tan:"#d2b48c",beige:"#f5f5dc",khaki:"#c3b091",camel:"#c19a6b",sienna:"#a0522d",ochre:"#cc7722",copper:"#b87333",bronze:"#cd7f32",
+white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",grey:"#9ca3af",charcoal:"#36454f",black:"#111827"
+};
+const requestedColor=(effectiveSegments[4]||"purple").toLowerCase();
+const color=colorNames[requestedColor]||(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(requestedColor)?requestedColor:"#c084fc");
             tags = [...tags.filter(tag => tag.label.toLowerCase() !== label.toLowerCase()), { label, color }].slice(-8);
           }
         }
