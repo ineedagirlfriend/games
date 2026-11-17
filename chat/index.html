@@ -893,25 +893,39 @@ let dmRealtimeChannel = null;
 let isServerDMView = false;
 let unreadRealtimeChannel=null;
 let unreadRefreshInProgress=false;
+let unreadPollInterval=null;
 
 async function refreshServerUnreadIndicators(user){
-  if(!user?.id||unreadRefreshInProgress)return;
-  unreadRefreshInProgress=true;
-  try{
-    const {data:memberships}=await backend.from("chat_server_members").select("server_id").eq("user_id",user.id);
-    const ids=[...new Set((memberships||[]).map(x=>x.server_id))];
-    if(!ids.length)return;
-    const {data:rows}=await backend.from("messages").select("server_id,timestamp,userId").in("server_id",ids).neq("userId",user.id).order("timestamp",{ascending:false}).limit(2000);
-    const unread=new Set();
-    for(const m of rows||[]){
-      const readAt=Number(localStorage.getItem("cg-server-read:"+user.id+":"+m.server_id)||0);
-      const stamp=typeof m.timestamp==="number"?m.timestamp:new Date(m.timestamp||0).getTime();
-      if(stamp>readAt&&m.server_id!==activeChatServerId)unread.add(m.server_id);
-    }
-    if(chatServerRailCache.userId===user.id)chatServerRailCache.unread=unread;
-    document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.toggle("has-unread",unread.has(b.dataset.serverId)));
-  }catch(e){console.warn("Could not refresh server unread indicators:",e);}
-  finally{unreadRefreshInProgress=false;}
+ if(!user?.id||unreadRefreshInProgress)return;
+ unreadRefreshInProgress=true;
+ try{
+  const {data:memberships,error:me}=await backend.from("chat_server_members").select("server_id").eq("user_id",user.id);if(me)throw me;
+  const serverIds=[...new Set((memberships||[]).map(x=>x.server_id))],unreadServers=new Set();
+  if(serverIds.length){
+   const {data:msgs,error}=await backend.from("messages").select("id,server_id,channel_id,timestamp,userId").in("server_id",serverIds).neq("userId",user.id).order("timestamp",{ascending:false}).limit(5000);if(error)throw error;
+   for(const m of msgs||[]){if(!m.server_id||!m.channel_id)continue;const key="cg-channel-read:"+user.id+":"+m.server_id+":"+m.channel_id;let readAt=Number(localStorage.getItem(key)||0);if(m.server_id===activeChatServerId&&m.channel_id===activeChatChannelId&&!isDMView){readAt=Math.max(readAt,Date.now());localStorage.setItem(key,String(readAt));}if(Number(m.timestamp||0)>readAt)unreadServers.add(m.server_id);}
+  }
+  if(chatServerRailCache.userId===user.id)chatServerRailCache.unread=unreadServers;
+  document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(x=>x.classList.toggle("has-unread",unreadServers.has(x.dataset.serverId)));
+  const {data:links,error:le}=await backend.from("chat_conversation_members").select("conversation_id,last_read_at").eq("user_id",user.id);if(le)throw le;
+  const convos=[...new Set((links||[]).map(x=>x.conversation_id).filter(Boolean))],readAt=new Map((links||[]).map(x=>[x.conversation_id,x.last_read_at?new Date(x.last_read_at).getTime():0])),unreadDMs=new Set();
+  if(convos.length){
+   const {data:dm,error:de}=await backend.from("chat_dm_messages").select("id,conversation_id,sender_id,created_at").in("conversation_id",convos).order("created_at",{ascending:false}).limit(5000);if(de)throw de;
+   for(const m of dm||[]){if(m.sender_id===user.id)continue;if(isDMView&&!isServerDMView&&m.conversation_id===activeChatConversationId)continue;if(new Date(m.created_at).getTime()>(readAt.get(m.conversation_id)||0))unreadDMs.add(m.conversation_id);}
+  }
+  if(activeChatConversationId&&isDMView&&!isServerDMView){await backend.from("chat_conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",activeChatConversationId).eq("user_id",user.id);unreadDMs.delete(activeChatConversationId);}
+  document.querySelectorAll("#channel-list .channel-row[data-conversation-id]").forEach(row=>{const unread=unreadDMs.has(row.dataset.conversationId);row.classList.toggle("has-unread",unread);let dot=row.querySelector(".unread-dot");if(unread&&!dot){dot=document.createElement("span");dot.className="unread-dot";dot.setAttribute("aria-label","Unread messages");row.appendChild(dot);}else if(!unread)dot?.remove();});
+  for(const id of unreadDMs)await addUnreadDMShortcut(id,user);
+  document.querySelectorAll(".server-rail-btn.dm-shortcut[data-conversation-id]").forEach(x=>{if(!unreadDMs.has(x.dataset.conversationId))x.remove();});
+  const {data:whispers,error:we}=await backend.from("whispers").select("id,timestamp,type,isOmoggleInvite,server_id").contains("participants",[user.id]).order("timestamp",{ascending:false}).limit(1000);if(we)throw we;
+  const lastRead=Number(localStorage.getItem("cg-server-dm-read:"+user.id)||0),isUnread=(whispers||[]).some(m=>(m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice")&&Number(m.timestamp||0)>lastRead);
+  const inbox=document.querySelector('#channel-list .channel-row[data-server-dm-row="true"]');if(inbox){inbox.classList.toggle("has-unread",isUnread);let dot=inbox.querySelector(".unread-dot");if(isUnread&&!dot){dot=document.createElement("span");dot.className="unread-dot";dot.setAttribute("aria-label","Unread alerts");inbox.appendChild(dot);}else if(!isUnread)dot?.remove();}
+  const rail=document.getElementById("server-sidebar");let shortcut=rail?.querySelector('.server-rail-btn.dm-shortcut[data-server-dm="true"]');
+  if(isUnread&&!isServerDMView&&!shortcut){shortcut=document.createElement("button");shortcut.className="server-rail-btn dm-shortcut has-unread";shortcut.dataset.serverDm="true";shortcut.title="Server DM · Requests & alerts · Unread";shortcut.setAttribute("aria-label",shortcut.title);shortcut.textContent="✉";shortcut.addEventListener("click",()=>loadServerDM(user));const first=[...(rail?.querySelectorAll(".server-rail-btn")||[])].find(x=>x.id!=="open-dms-btn"&&x.id!=="create-server-btn"&&!x.classList.contains("dm-shortcut"));if(rail&&!rail.querySelector(".dm-shortcut-divider")){const d=document.createElement("div");d.className="dm-shortcut-divider";rail.insertBefore(d,first||document.getElementById("create-server-btn")||null);}if(rail)rail.insertBefore(shortcut,first||document.getElementById("create-server-btn")||null);}
+  else if(!isUnread||isServerDMView)shortcut?.remove();
+  if(!rail?.querySelector(".server-rail-btn.dm-shortcut"))rail?.querySelector(".dm-shortcut-divider")?.remove();
+ }catch(e){console.warn("Unread refresh failed; next polling/realtime update will retry:",e);}
+ finally{unreadRefreshInProgress=false;}
 }
 
 async function addUnreadDMShortcut(conversationId,user){
@@ -977,8 +991,11 @@ async function startUnreadRealtime(user){
         rail.insertBefore(b,firstServer||document.getElementById("create-server-btn")||null);
       }
     })
-    .subscribe();
+    .subscribe((status,error)=>{if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("Unread realtime status:",status,error||"");});
   await refreshServerUnreadIndicators(user);
+  if(unreadPollInterval)clearInterval(unreadPollInterval);
+  unreadPollInterval=setInterval(()=>{if(document.visibilityState!=="hidden")refreshServerUnreadIndicators(user);},12000);
+  document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")refreshServerUnreadIndicators(user);});
 }
 
 
@@ -1361,8 +1378,7 @@ async function loadChatNavigation(user) {
     if (serverError) { console.error("Servers:",serverError); return; }
     rows=servers||[];
     const {data:unreadRows}=ids.length?await backend.from("messages").select("server_id,timestamp,userId,senderId").in("server_id",ids).neq("userId",user.id).order("timestamp",{ascending:false}).limit(1000):{data:[]};
-    const readByServer=new Map(rows.map(server=>[server.id,Number(localStorage.getItem("cg-server-read:"+user.id+":"+server.id)||0)]));
-    const unread=new Set((unreadRows||[]).filter(m=>Number(m.timestamp||0)>(readByServer.get(m.server_id)||0)).map(m=>m.server_id));
+    const unread=new Set((unreadRows||[]).filter(m=>Number(m.timestamp||0)>Number(localStorage.getItem("cg-channel-read:"+user.id+":"+m.server_id+":"+m.channel_id)||0)&&!(m.server_id===activeChatServerId&&m.channel_id===activeChatChannelId&&!isDMView)).map(m=>m.server_id));
     chatServerRailCache={userId:user.id,rows,unread};
     forceChatServerRailRefresh=false;
   }
@@ -1429,7 +1445,7 @@ async function switchChatChannel(id,user){
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
   document.getElementById("open-dms-btn")?.classList.remove("active");
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.toggle("active",b.dataset.serverId===activeChatServerId));
-  if(user?.id&&activeChatServerId){localStorage.setItem("cg-server-read:"+user.id+":"+activeChatServerId,String(Date.now()));chatServerRailCache.unread?.delete(activeChatServerId);document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>{if(b.dataset.serverId===activeChatServerId)b.classList.remove("has-unread");});}
+  if(user?.id&&activeChatServerId&&activeChatChannelId){localStorage.setItem("cg-channel-read:"+user.id+":"+activeChatServerId+":"+activeChatChannelId,String(Date.now()));await refreshServerUnreadIndicators(user);}
   setActiveChatTitle(activeChatChannels.find(c=>c.id===id));
   document.querySelectorAll(".channel-row").forEach(el=>el.classList.toggle("active",el.dataset.channelId===id));
   dbPublicMessages=[]; dbPrivateMessages=[]; dbHistoricalMessages=[]; historyPageOffset=0; allMessagesLoaded=false;
@@ -1914,6 +1930,7 @@ async function stopChatRuntime() {
     clearInterval(chatProfilePollInterval);
     chatProfilePollInterval = null;
   }
+  if(unreadPollInterval){clearInterval(unreadPollInterval);unreadPollInterval=null;}
 
   const channelsToRemove = [publicChannel, privateChannel, userProfileChannel, unreadRealtimeChannel];
   publicChannel = null;
