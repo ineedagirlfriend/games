@@ -963,7 +963,7 @@ async function startUnreadRealtime(user){
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"messages"},payload=>{
       const m=payload.new;
       if(!m?.server_id||m.userId===user.id)return;
-      if(m.server_id===activeChatServerId&&!isDMView){localStorage.setItem("cg-server-read:"+user.id+":"+m.server_id,String(Date.now()));return;}
+      if(m.server_id===activeChatServerId&&m.channel_id===activeChatChannelId&&!isDMView){localStorage.setItem("cg-channel-read:"+user.id+":"+m.server_id+":"+m.channel_id,String(Date.now()));return;}
       const button=[...document.querySelectorAll(".server-rail-btn[data-server-id]")].find(b=>b.dataset.serverId===m.server_id);
       button?.classList.add("has-unread");
       chatServerRailCache.unread?.add(m.server_id);
