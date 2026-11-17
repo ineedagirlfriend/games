@@ -1445,8 +1445,8 @@ async function loadChatNavigation(user) {
 }
 
 async function switchChatChannel(id,user){
-  await refreshContextMentionUsers(user);
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
+  await refreshContextMentionUsers(user);
   document.getElementById("open-dms-btn")?.classList.remove("active");
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.toggle("active",b.dataset.serverId===activeChatServerId));
   if(user?.id&&activeChatServerId&&activeChatChannelId){localStorage.setItem("cg-channel-read:"+user.id+":"+activeChatServerId+":"+activeChatChannelId,String(Date.now()));await refreshServerUnreadIndicators(user);}
