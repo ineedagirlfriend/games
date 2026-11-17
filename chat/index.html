@@ -902,6 +902,19 @@
 import { createClient } from "../assets/backend-client.js";
 const backend = createClient();
 
+const DEVICE_BAN_STORAGE_KEY = "devicebanned";
+function showDeviceBannedScreen() {
+  document.body.innerHTML = `
+    <main style="min-height:100vh;display:grid;place-items:center;padding:24px;background:#0b0d12;color:#f8fafc;font-family:system-ui,sans-serif;text-align:center">
+      <section style="max-width:520px">
+        <h1 style="font-size:clamp(25px,5vw,38px);margin:0 0 16px;color:#ef4444">Your device has been permanently banned.</h1>
+        <p style="font-size:16px;line-height:1.6;color:#cbd5e1">No reason was provided.</p>
+        <p style="font-size:15px;line-height:1.6;color:#94a3b8">Ask an admin if you think this is a mistake.</p>
+      </section>
+    </main>`;
+}
+if (localStorage.getItem(DEVICE_BAN_STORAGE_KEY) === "true") showDeviceBannedScreen();
+
 let activeChatServerId = "10000000-0000-4000-8000-000000000001";
 let activeChatChannelId = "10000000-0000-4000-8000-000000000003";
 let activeChatServer = null;
@@ -1800,6 +1813,7 @@ const EX_COMMANDS = [
   { name: "/tag", desc: "Manage your own tags, or manage others' tags (Admin/Owner) {/tag give @me cool purple}" },
   { name: "/tags", desc: "View a user's tags {/tags @user}" },
   { name: "/admin", desc: "Promote a user to Admin {/admin @user}" },
+  { name: "/ipban", desc: "Permanently block the browser profile used by a user {/ipban @username}" },
   { name: "/ban", desc: "Ban a user for a duration {/ban @user time reason}" },
   { name: "/clearstorage", desc: "Delete all chat uploads while keeping profile pictures (Admin/Owner)" },
   { name: "/deleteall", desc: "Clear messages in the currently selected server channel only {/deleteall}" },
@@ -2008,6 +2022,10 @@ setTimeout(() => {
 
 /* AUTH CHECK & SYNC USER ROLES / MUTE STATE */
 backend.auth.onAuthStateChange(async (event, session, authError) => {
+  if (localStorage.getItem(DEVICE_BAN_STORAGE_KEY) === "true") {
+    showDeviceBannedScreen();
+    return;
+  }
   const user = session?.user || null;
   if (!user) {
     if (event === "INITIAL_SESSION" && authError && authError.status !== 401) {
@@ -2037,12 +2055,12 @@ backend.auth.onAuthStateChange(async (event, session, authError) => {
 
   let { data: profile, error } = await backend
     .from("users")
-    .select("id, username, email, role, rank, mutedUntil, bannedUntil, banReason, createdAt, grade, tags")
+    .select("id, username, email, role, rank, mutedUntil, bannedUntil, banReason, deviceBanned, createdAt, grade, tags")
     .eq("id", user.id)
     .single();
 
   if (error) {
-    const fallbackProfile = await backend.from("users").select("id, username, email, role, rank, mutedUntil, bannedUntil, banReason, createdAt, grade, tags").eq("id", user.id).single();
+    const fallbackProfile = await backend.from("users").select("id, username, email, role, rank, mutedUntil, bannedUntil, banReason, deviceBanned, createdAt, grade, tags").eq("id", user.id).single();
     profile = fallbackProfile.data;
     error = fallbackProfile.error;
   }
@@ -2057,6 +2075,11 @@ backend.auth.onAuthStateChange(async (event, session, authError) => {
       createdAt: Date.now()
     });
   } else {
+    if (profile.deviceBanned === true) {
+      localStorage.setItem(DEVICE_BAN_STORAGE_KEY, "true");
+      showDeviceBannedScreen();
+      return;
+    }
     currentUsername = profile.username || currentUsername;
     currentUserRole = profile.role || "user";
     currentUserGrade = profile.grade || "";
@@ -2073,6 +2096,11 @@ backend.auth.onAuthStateChange(async (event, session, authError) => {
     .channel(`public:users:id=eq.${user.id}`)
     .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'users', filter: `id=eq.${user.id}` }, payload => {
       const data = payload.new;
+      if (data.deviceBanned === true) {
+        localStorage.setItem(DEVICE_BAN_STORAGE_KEY, "true");
+        showDeviceBannedScreen();
+        return;
+      }
       const oldBannedUntil = currentUserBannedUntil;
       const oldMutedUntil = currentUserMutedUntil;
       
@@ -3625,7 +3653,7 @@ async function startChat(user) {
         const available = EX_COMMANDS.filter(command => {
           if (["/admin", "/unadmin", "/owner", "/unowner"].includes(command.name)) return currentUserRole === "owner";
           if (["/subscription", "/deleteuser", "/clearstorage"].includes(command.name)) return isAdminPlus;
-          if (["/ban", "/unban", "/permaban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tags", "/modlogs", "/serverinfo", "/stats", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
+          if (["/ban", "/unban", "/permaban", "/ipban", "/kick", "/mute", "/unmute", "/warn", "/userinfo", "/tags", "/modlogs", "/serverinfo", "/stats", "/deleteall", "/poll"].includes(command.name)) return isAdminPlus;
           return true;
         }).map(command => `${command.name} - ${command.desc}`).join(" | ");
         showLocalSystemMessage(available, false);
@@ -3915,6 +3943,23 @@ white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",
         // messages/whispers, so other chat users cannot see the result.
         showLocalSystemMessage(`User info for @${userRow.username || targetUser.username}: ${fields.join(" | ")}`, false);
         await logModeratorEvent(`@${currentUsername} used /userinfo on @${userRow.username || targetUser.username}.`);
+        return;
+      }
+
+      if (commandKey === "/ipban" && isAdminPlus) {
+        const targetUsers = await resolveTargetUsers();
+        if (!targetUsers.length || isEveryoneTarget()) { showLocalSystemMessage("Syntax: /ipban @username (one account only)", true); return; }
+        const targetUser = targetUsers[0];
+        if (!window.confirm(`Permanently device-ban @${targetUser.username}? It will be copied into localStorage on that account's next chat visit, then block all accounts in that browser profile.`)) return;
+        const { error } = await backend.from("users").update({ deviceBanned: true }).eq("id", targetUser.id);
+        if (error) { showLocalSystemMessage("Could not apply device ban: " + error.message, true); return; }
+        if (targetUser.id === currentUser.id) {
+          localStorage.setItem(DEVICE_BAN_STORAGE_KEY, "true");
+          showDeviceBannedScreen();
+          return;
+        }
+        await logModeratorEvent(`@${currentUsername} applied a persistent browser device ban to @${targetUser.username}.`);
+        showLocalSystemMessage(`Device ban recorded for @${targetUser.username}. It activates on that browser the next time that account visits chat.`, false);
         return;
       }
 
