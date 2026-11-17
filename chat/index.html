@@ -1113,7 +1113,7 @@ async function showDMList(user){
     const ignored=isDMConversationIgnored(user.id,convo.id);
     const unread=!ignored&&(recentDMs||[]).some(m=>m.conversation_id===convo.id&&m.sender_id!==user.id&&new Date(m.created_at).getTime()>lastRead);
     const item=document.createElement("div");item.className="dm-list-item";item.style.cssText="display:flex;align-items:center;gap:6px;width:100%";
-    const row=document.createElement("button");row.type="button";row.className="channel-row"+(unread?" has-unread":"")+(ignored?" dm-ignored":"");row.dataset.conversationId=convo.id;row.style.flex="1;min-width:0";
+    const row=document.createElement("button");row.type="button";row.className="channel-row"+(unread?" has-unread":"")+(ignored?" dm-ignored":"");row.dataset.conversationId=convo.id;row.style.flex="1 1 auto";row.style.minWidth="0";
     row.innerHTML='<span class="dm-row-avatar"></span><span>'+escapeHtml(label)+(ignored?'<small style="display:block;color:#94a3b8;font-size:.72rem">Ignored</small>':"")+'</span>'+(unread?'<span class="unread-dot" aria-label="Unread messages"></span>':"");
     row.addEventListener("click",()=>loadDMConversation(convo,user));
     const more=document.createElement("button");more.type="button";more.className="chat-ui-btn";more.textContent="⋯";more.title="DM options";more.setAttribute("aria-label","DM options for "+label);more.style.cssText="padding:8px 11px;min-width:42px;flex:none";
