@@ -1816,7 +1816,7 @@ const EX_COMMANDS = [
   { name: "/ipban", desc: "Permanently block the browser profile used by a user {/ipban @username}" },
   { name: "/ban", desc: "Ban a user for a duration {/ban @user time reason}" },
   { name: "/clearstorage", desc: "Delete all chat uploads while keeping profile pictures (Admin/Owner)" },
-  { name: "/deleteall", desc: "Clear messages in the currently selected server channel only {/deleteall}" },
+  { name: "/deleteall", desc: "Clear messages, polls, and poll votes in the currently selected server channel {/deleteall}" },
   { name: "/deleteuser", desc: "Delete a user from the database {/deleteuser @user}" },
   { name: "/modlogs", desc: "View recent moderator audit events {/modlogs}" },
   { name: "/serverinfo", desc: "View chat server statistics {/serverinfo}" },
@@ -4138,16 +4138,28 @@ white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",
           showLocalSystemMessage("/deleteall only works inside a selected server channel. It never deletes DMs or Server DM alerts.", true);
           return;
         }
-        const confirmed = await uiConfirm("Delete every message in #"+(activeChatChannels.find(c=>c.id===activeChatChannelId)?.name||"this channel")+"? This affects only this channel in this server. This cannot be undone.");
+        const channelName = activeChatChannels.find(c=>c.id===activeChatChannelId)?.name||"this channel";
+        const confirmed = await uiConfirm("Delete every message AND poll in #"+channelName+"? This affects only this channel in this server, including poll options and votes. DMs and Server DM alerts are untouched. This cannot be undone.");
         if (!confirmed) return;
-        const {error:deleteError,count} = await backend.from("messages").delete({count:"exact"}).eq("server_id",activeChatServerId).eq("channel_id",activeChatChannelId).select("id");
-        if (deleteError) {
-          showLocalSystemMessage("Could not clear this channel: "+deleteError.message, true);
+
+        const {data:deletedPolls,error:pollDeleteError} = await backend.from("chat_polls")
+          .delete().eq("server_id",activeChatServerId).eq("channel_id",activeChatChannelId).select("id");
+        if (pollDeleteError) {
+          showLocalSystemMessage("Could not delete this channel's polls: "+pollDeleteError.message+". No messages were deleted.", true);
           return;
         }
+
+        const {data:deletedMessages,error:deleteError} = await backend.from("messages")
+          .delete().eq("server_id",activeChatServerId).eq("channel_id",activeChatChannelId).select("id");
+        if (deleteError) {
+          showLocalSystemMessage("Polls were deleted, but messages could not be cleared: "+deleteError.message, true);
+          return;
+        }
+        const messageCount=deletedMessages?.length??0;
+        const pollCount=deletedPolls?.length??0;
         dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages(true);
-        showLocalSystemMessage("Cleared "+(count??"all")+" message(s) from this channel only.", false);
-        await logModeratorEvent(`@${currentUsername} cleared messages in channel ${activeChatChannelId} on server ${activeChatServerId}.`);
+        showLocalSystemMessage("Cleared "+messageCount+" message(s) and "+pollCount+" poll(s), including their votes, from #"+channelName+".", false);
+        await logModeratorEvent(`@${currentUsername} cleared ${messageCount} messages and ${pollCount} polls in channel ${activeChatChannelId} on server ${activeChatServerId}.`);
         return;
       }
 
