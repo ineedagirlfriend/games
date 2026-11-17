@@ -1244,7 +1244,7 @@ function chatModalField(label,value="",placeholder="",type="text"){
 }
 async function openChatUserPicker({title="Select people",description="Search for accounts and select one or more people.",excludeIds=[],users=null,confirmLabel="Continue",multi=true}={}){
   let list=users;
-  if(!list){const result=await backend.from("users").select("id,username,role").order("username").limit(500);if(result.error){showLocalSystemMessage("Could not load users: "+result.error.message,true);return null;}list=result.data||[];}
+  if(!list){try{list=await fetchAllChatUsers("id,username,role");}catch(error){showLocalSystemMessage("Could not load the complete user list: "+error.message,true);return null;}}
   const excluded=new Set(excludeIds);list=list.filter(u=>!excluded.has(u.id)).sort((a,b)=>a.username.localeCompare(b.username));
   const root=document.createElement("div");const search=document.createElement("input");search.className="chat-ui-search";search.type="search";search.placeholder="Search by username…";search.setAttribute("aria-label","Search users");
   const count=document.createElement("p");count.style.cssText="color:#94a3b8;font-size:.8rem;margin:10px 1px 0";const rows=document.createElement("div");rows.className="chat-ui-userlist";const selected=new Set();
@@ -2221,27 +2221,39 @@ function handleBannedUserDisplay() {
   }
 }
 
+async function fetchAllChatUsers(columns = "id, username, role, rank, grade, tags") {
+  const pageSize = 500;
+  const users = [];
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await backend.from("users")
+      .select(columns)
+      .order("username", { ascending: true })
+      .order("id", { ascending: true })
+      .range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    const page = data || [];
+    users.push(...page);
+    if (page.length < pageSize) break;
+  }
+  return users;
+}
+
 async function loadAndCacheAllUsers() {
   try {
-    let { data: usersData, error } = await backend.from("users").select("id, username, role, rank, grade, tags");
-    if (error) {
-      const fallbackUsers = await backend.from("users").select("id, username, role, rank, grade, tags");
-      usersData = fallbackUsers.data;
-    }
-    if (usersData) {
-      allRegisteredUsers = usersData.map(u => ({
-        id: u.id,
-        username: u.username || "User",
-        role: u.role || "user",
-        rank: u.rank || "none",
-        grade: u.grade || "",
-        tags: normalizeProfileTags(u.tags),
-        avatar: u.username ? u.username[0].toUpperCase() : "U"
-      }));
-      localUsersCache = allRegisteredUsers;
-    }
+    const usersData = await fetchAllChatUsers();
+    allRegisteredUsers = usersData.map(u => ({
+      id: u.id,
+      username: u.username || "User",
+      role: u.role || "user",
+      rank: u.rank || "none",
+      grade: u.grade || "",
+      tags: normalizeProfileTags(u.tags),
+      avatar: u.username ? u.username[0].toUpperCase() : "U"
+    }));
+    localUsersCache = allRegisteredUsers;
+    updateAutocompleteCacheFromLoadedMessages();
   } catch (err) {
-    console.error("Failed to compile master user profile storage parameters:", err);
+    console.error("Failed to load the complete registered-user list:", err);
   }
 }
 
@@ -5061,7 +5073,9 @@ function getMentionSuggestionItems(searchStr = "") {
     ] : [])
   ].filter(item => item.username.startsWith(normalizedSearch));
 
-  const sourceUsers=isDMView?(activeChatConversationId?contextMentionUsers:(currentUser?[{id:currentUser.id,username:currentUsername,role:currentUserRole}]:[])):(activeChatServerId?contextMentionUsers:localUsersCache);
+  // Mentions and command targets are global accounts, not just current-room members.
+  // Membership-based results caused users to disappear until navigation refreshed the list.
+  const sourceUsers = localUsersCache.length ? localUsersCache : allRegisteredUsers;
   const filteredUsers = sourceUsers
     .filter(u => u.username && u.username.toLowerCase().startsWith(normalizedSearch))
     .map(u => ({
