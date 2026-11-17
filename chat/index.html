@@ -3549,7 +3549,7 @@ async function startChat(user) {
 
       // Keep backwards compatibility with commands that accept an untagged
       // single-word username.
-      if (targetUsernames.length === 0 && segments.length > 1) {
+      if (targetUsernames.length === 0 && segments.length > 1 && !/^@everyone$/i.test(segments[1])) {
         const firstArg = segments[1];
         const isDuration = /^\\d+(s|m|h|d|w|mo|y)$/i.test(firstArg);
         if (!isDuration && firstArg.length > 0) {
@@ -3558,30 +3558,18 @@ async function startChat(user) {
         }
       }
 
-      async function resolveTargetUser() {
-        if (targetUsernames.length === 0) return null;
+      function isEveryoneTarget() { return targetUsernames.includes("everyone") || effectiveSegments[1]?.toLowerCase() === "@everyone"; }
+      async function resolveTargetUsers() {
+        if (isEveryoneTarget()) return localUsersCache.filter(u => u && u.id);
+        if (!targetUsernames.length) return [];
         const searchName = targetUsernames[0].replace(/~space~/g, " ");
-        if (["me", "self"].includes(searchName) || searchName === currentUsername.toLowerCase()) {
-          return {
-            id: currentUser.id,
-            username: currentUsername,
-            role: currentUserRole,
-            grade: currentUserGrade,
-            tags: currentUserTags
-          };
-        }
-
-        let found = localUsersCache.find(u => u.username && u.username.toLowerCase() === searchName);
-        if (found) return found;
-
-        const { data } = await backend
-          .from("users")
-          .select("id, username, role, grade, tags")
-          .ilike("username", searchName)
-          .maybeSingle();
-
-        return data || null;
+        if (["me", "self"].includes(searchName) || searchName === currentUsername.toLowerCase()) return [{ id: currentUser.id, username: currentUsername, role: currentUserRole, grade: currentUserGrade, tags: currentUserTags }];
+        const found = localUsersCache.find(u => u.username && u.username.toLowerCase() === searchName);
+        if (found) return [found];
+        const { data } = await backend.from("users").select("id, username, role, grade, tags").ilike("username", searchName).maybeSingle();
+        return data ? [data] : [];
       }
+      async function resolveTargetUser() { return (await resolveTargetUsers())[0] || null; }
 
       function checkRoleHierarchy(target) {
         if (!target) return false;
@@ -3674,28 +3662,12 @@ async function startChat(user) {
 
       if (commandKey === "/tag") {
         const action = effectiveSegments[1]?.toLowerCase();
-        const targetUser = await resolveTargetUser();
-        if (!targetUser || !["give", "remove", "clear"].includes(action)) {
-          showLocalSystemMessage("Syntax: /tag give @me tag-name color | /tag remove @me tag-name | /tag clear @me. Admins/Owners can target other users.", true);
-          return;
-        }
-        const isSelfTagging = targetUser.id === currentUser.id;
-        if (!isSelfTagging && !isAdminPlus) {
-          showLocalSystemMessage("You can only manage your own tags. Admins and Owners can manage other users' tags.", true);
-          return;
-        }
-        if (!isSelfTagging && !checkRoleHierarchy(targetUser)) return;
-        const { data: targetProfile } = await backend.from("users").select("tags, grade, username").eq("id", targetUser.id).maybeSingle();
-        let tags = normalizeProfileTags(targetProfile?.tags);
-        if (action === "clear") {
-          tags = [];
-        } else {
-          const label = effectiveSegments[3]?.replace(/^@/, "").slice(0, 24);
-          if (!label) { showLocalSystemMessage("A tag name is required.", true); return; }
-          if (action === "remove") {
-            tags = tags.filter(tag => tag.label.toLowerCase() !== label.toLowerCase());
-          } else {
-            const colorNames = {
+        const targetUsers = await resolveTargetUsers();
+        if (!targetUsers.length || !["give", "remove", "clear"].includes(action)) { showLocalSystemMessage("Syntax: /tag give @user tag-name color | /tag give @everyone tag-name color | /tag remove @user tag-name | /tag clear @user.", true); return; }
+        if (targetUsers.length > 1 && !isAdminPlus) { showLocalSystemMessage("Only Admins and Owners can tag multiple users.", true); return; }
+        const label = effectiveSegments[3]?.replace(/^@/, "").slice(0, 24);
+        if (action !== "clear" && !label) { showLocalSystemMessage("A tag name is required.", true); return; }
+        const colorNames = {
 red:"#ef4444",crimson:"#dc143c",scarlet:"#ff2400",maroon:"#800000",burgundy:"#800020",ruby:"#e0115f",coral:"#ff7f50",salmon:"#fa8072",tomato:"#ff6347",
 orange:"#f97316",tangerine:"#f28500",amber:"#ffbf00",gold:"#ffd700",golden:"#daa520",mustard:"#e1ad01",yellow:"#facc15",lemon:"#fff44f",
 lime:"#a3e635",chartreuse:"#7fff00",green:"#22c55e",emerald:"#50c878",jade:"#00a86b",mint:"#98ff98",teal:"#14b8a6",turquoise:"#40e0d0",aqua:"#00ffff",cyan:"#06b6d4",
@@ -3704,21 +3676,27 @@ pink:"#ec4899",hotpink:"#ff69b4",rose:"#ff007f",blush:"#de5d83",peach:"#ffcba4",
 brown:"#8b4513",chocolate:"#7b3f00",cocoa:"#d2691e",coffee:"#6f4e37",tan:"#d2b48c",beige:"#f5f5dc",khaki:"#c3b091",camel:"#c19a6b",sienna:"#a0522d",ochre:"#cc7722",copper:"#b87333",bronze:"#cd7f32",
 white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",grey:"#9ca3af",charcoal:"#36454f",black:"#111827"
 };
-const requestedColor=(effectiveSegments[4]||"purple").toLowerCase();
-const color=requestedColor === "rainbow" ? "rainbow" : (colorNames[requestedColor]||(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(requestedColor)?requestedColor:"#c084fc"));
-            tags = [...tags.filter(tag => tag.label.toLowerCase() !== label.toLowerCase()), { label, color }].slice(-8);
-          }
+        const requestedColor = (effectiveSegments[4] || "purple").toLowerCase();
+        const color = requestedColor === "rainbow" ? "rainbow" : (colorNames[requestedColor] || (/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(requestedColor) ? requestedColor : "#c084fc"));
+        if (isEveryoneTarget() && !window.confirm(`Apply this tag to all ${targetUsers.length} registered users?`)) return;
+        let updated = 0;
+        for (const targetUser of targetUsers) {
+          const self = targetUser.id === currentUser.id;
+          if (!self && !isAdminPlus) continue;
+          if (!self && !checkRoleHierarchy(targetUser)) continue;
+          const { data: profile } = await backend.from("users").select("tags").eq("id", targetUser.id).maybeSingle();
+          let tags = normalizeProfileTags(profile?.tags);
+          if (action === "clear") tags = [];
+          else if (action === "remove") tags = tags.filter(tag => tag.label.toLowerCase() !== label.toLowerCase());
+          else tags = [...tags.filter(tag => tag.label.toLowerCase() !== label.toLowerCase()), { label, color }].slice(-8);
+          const { error } = await backend.from("users").update({ tags }).eq("id", targetUser.id);
+          if (error) { console.error("Tag update failed:", targetUser.username, error); continue; }
+          updated++;
+          if (self) currentUserTags = tags;
+          else await logModeratorEvent(`@${currentUsername} used /tag ${action} on @${targetUser.username}.`);
         }
-        const { error } = await backend.from("users").update({ tags }).eq("id", targetUser.id);
-        if (error) { showLocalSystemMessage(`Failed to update @${targetUser.username}'s tags: ${error.message}`, true); return; }
-        showLocalSystemMessage(isSelfTagging ? "Your tags have been updated." : `Updated tags for @${targetUser.username}.`, false);
-        if (!isSelfTagging) {
-          await logModeratorEvent(`@${currentUsername} used /tag ${action} on @${targetUser.username}.`);
-        }
-        if (isSelfTagging) currentUserTags = tags;
-        await loadAndCacheAllUsers();
-        renderMessages(true);
-        return;
+        showLocalSystemMessage(`Updated tags for ${updated} user(s).`, false);
+        await loadAndCacheAllUsers(); renderMessages(true); return;
       }
 
       if (commandKey === "/modlogs" && isAdminPlus) {
@@ -3935,24 +3913,20 @@ const color=requestedColor === "rainbow" ? "rainbow" : (colorNames[requestedColo
       }
 
       if (commandKey === "/ban" && isAdminPlus) {
-        const targetUser = await resolveTargetUser();
-        const durationStr = effectiveSegments[2];
-        const durationMs = parseDurationString(durationStr);
+        const targetUsers = await resolveTargetUsers();
+        const durationStr = effectiveSegments[2], durationMs = parseDurationString(durationStr);
         const reason = effectiveSegments.slice(3).join(" ") || "No explicit reason logged.";
-
-        if (!targetUser || !durationMs) {
-          showLocalSystemMessage("Syntax: /ban @username [time, e.g., 10s/2h/15d] [reason]", true);
-          return;
+        if (!targetUsers.length || !durationMs) { showLocalSystemMessage("Syntax: /ban @username 10m reason | /ban @everyone 10m reason | /ban @me 1m reason", true); return; }
+        if (isEveryoneTarget() && !window.confirm(`Ban ALL ${targetUsers.length} registered users for ${durationStr}? This includes your own account if present.`)) return;
+        let updated = 0;
+        for (const targetUser of targetUsers) {
+          if (targetUser.id !== currentUser.id && !checkRoleHierarchy(targetUser)) continue;
+          const { error } = await backend.from("users").update({ bannedUntil: Date.now() + durationMs, banReason: reason }).eq("id", targetUser.id);
+          if (error) { console.error("Ban failed:", targetUser.username, error); continue; }
+          updated++;
+          await logModeratorEvent(`@${currentUsername} banned @${targetUser.username} for ${durationStr}. Reason: ${reason}`);
         }
-        if (!checkRoleHierarchy(targetUser)) return;
-
-        const banTimestamp = Date.now() + durationMs;
-        const { error } = await backend.from("users").update({ "bannedUntil": banTimestamp, "banReason": reason }).eq("id", targetUser.id);
-
-        if (error) { showLocalSystemMessage(`Failed to ban user: ${error.message}`, true); return; }
-        showLocalSystemMessage(`Successfully banned @${targetUser.username} for ${durationStr}. Reason: ${reason}`, false);
-        await logModeratorEvent(`@${currentUsername} banned @${targetUser.username} for ${durationStr}. Reason: ${reason}`);
-        return;
+        showLocalSystemMessage(`Successfully banned ${updated} user(s) for ${durationStr}. Reason: ${reason}`, false); return;
       }
 
       if (commandKey === "/unban" && isAdminPlus) {
