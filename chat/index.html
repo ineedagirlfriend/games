@@ -791,6 +791,13 @@
     .channel-sidebar-actions button { flex:1 1 calc(50% - 6px); min-width:0; min-height:40px; padding:4px; border:1px solid var(--border); border-radius:8px; color:var(--text); background:var(--card); font-size:11px; font-weight:700; cursor:pointer; }
     .channel-category-heading { display:flex; align-items:center; padding:13px 8px 5px; color:var(--text-muted); font-size:10px; font-weight:900; letter-spacing:.09em; text-transform:uppercase; }
     .chat-main { flex:1; min-width:0; max-width:none; }
+    .server-sidebar { display:none !important; }
+    .channel-sidebar { display:none !important; }
+    .chat-layout.dm-view .channel-sidebar { display:flex !important; width:270px; flex:0 0 270px; }
+    .chat-mode-toggle { border:1px solid var(--border); border-radius:10px; padding:9px 14px; min-height:42px; background:var(--card-hover); color:var(--text); font-weight:800; cursor:pointer; }
+    .chat-mode-toggle:hover { border-color:var(--accent); }
+    @media(max-width:700px){.chat-layout.dm-view .channel-sidebar{width:min(42vw,190px);flex-basis:min(42vw,190px)}.chat-mode-toggle{padding:8px 10px;font-size:12px}}
+
     @media(max-width:700px) { .server-sidebar{width:58px;flex-basis:58px;padding-left:5px;padding-right:5px}.server-rail-btn{width:44px;height:44px;min-height:44px}.channel-sidebar{width:155px;flex-basis:155px}.channel-row{font-size:12px;padding:10px 7px}.chat-header{padding:.8rem}.message-scroller{padding:.9rem} }
 
   
@@ -879,6 +886,7 @@
       <div class="chat-header">
         <div class="chat-meta">
           <div class="channel-title"><span></span><strong>Chat</strong></div>
+          <button id="chat-mode-toggle" type="button" class="chat-mode-toggle">Direct Messages</button>
         </div>
       </div>
 
@@ -1012,6 +1020,13 @@ async function startUnreadRealtime(user){
       if(isDMView&&!isServerDMView&&!activeChatConversationId){await showDMList(user);return;}
       await addUnreadDMShortcut(m.conversation_id,user);
     })
+    .on("postgres_changes",{event:"UPDATE",schema:"public",table:"whispers"},payload=>{
+      const m=payload.new;
+      if(!m?.participants?.includes(user.id)||!m.isOmoggleInvite||m.inviteStatus!=="accepted"||processedOmoggleRedirects.has(m.id))return;
+      processedOmoggleRedirects.add(m.id);sessionStorage.setItem("omoggle_redirected_"+m.id,"true");
+      const roleIdentityString=user.id===m.senderId?"host":"guest";
+      setTimeout(()=>{if(!window.location.pathname.includes("/omoggle/"))window.location.href="../omoggle/?room="+m.id+"&role="+roleIdentityString+"&hostName="+encodeURIComponent(m.username||"Player");},800);
+    })
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"whispers"},async payload=>{
       const m=payload.new;
       if(!m?.participants?.includes(user.id)||!(m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice"))return;
@@ -1036,7 +1051,7 @@ async function startUnreadRealtime(user){
 
 
 async function showDMList(user){
-  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;
+  isDMView=true;isServerDMView=false;document.getElementById("chat-layout")?.classList.add("dm-view");clearEphemeralSystemMessages();activeChatServerId=null;
   contextMentionUsers=currentUser?[{id:currentUser.id,username:currentUsername,role:currentUserRole}]:[];activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
@@ -1044,6 +1059,9 @@ async function showDMList(user){
   await removeBackendChannel(privateChannel);privateChannel=null;
   dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages();
   document.getElementById("active-server-name").textContent="Direct Messages";
+  document.getElementById("channel-sidebar").style.display="flex";
+  const modeToggle=document.getElementById("chat-mode-toggle");
+  if(modeToggle){modeToggle.textContent="← NA Chat";modeToggle.onclick=async()=>{await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);};}
   document.querySelector(".channel-title strong").textContent="Direct Messages";
   const rail=document.getElementById("server-sidebar");
   const dmButton=document.getElementById("open-dms-btn");
@@ -1101,7 +1119,7 @@ async function showDMList(user){
 }
 
 async function loadServerDM(user){
-  isDMView=true;isServerDMView=true;activeChatConversationId=null;activeDMConversation=null;activeChatChannelId=null;activeChatServerId=null;activeChatServer=null;
+  isDMView=true;isServerDMView=true;document.getElementById("chat-layout")?.classList.add("dm-view");document.getElementById("channel-sidebar").style.display="flex";activeChatConversationId=null;activeDMConversation=null;activeChatChannelId=null;activeChatServerId=null;activeChatServer=null;
   document.getElementById("open-dms-btn")?.classList.add("active");
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.remove("active"));
   document.querySelectorAll("#channel-list .channel-row").forEach(b=>b.classList.toggle("active",b.dataset.serverDmRow==="true"));
@@ -1284,6 +1302,8 @@ async function createChatConversation(user){
 }
 
 async function loadDMConversation(convo,user){
+  document.getElementById("chat-layout")?.classList.add("dm-view");document.getElementById("channel-sidebar").style.display="flex";
+  const modeToggle=document.getElementById("chat-mode-toggle");if(modeToggle){modeToggle.textContent="← NA Chat";modeToggle.onclick=async()=>{await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);};}
   isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=convo.id;activeDMConversation=convo;
   document.getElementById("open-dms-btn")?.classList.add("active");
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.remove("active"));
@@ -1402,82 +1422,33 @@ let forceChatServerRailRefresh=true;
 
 async function loadChatNavigation(user) {
   if (isDMView) { await removeBackendChannel(dmRealtimeChannel); dmRealtimeChannel=null; activeChatConversationId=null; activeDMConversation=null; }
-  isDMView = false;
-  const rail = document.getElementById("server-sidebar");
-  const list = document.getElementById("channel-list");
-  if (!rail || !list || !user?.id) return;
-  let rows=chatServerRailCache.userId===user.id&&chatServerRailCache.rows&&!forceChatServerRailRefresh?chatServerRailCache.rows:null;
-  if(!rows){
-    const { data: memberships, error: memberError } = await backend.from("chat_server_members").select("server_id").eq("user_id",user.id);
-    if (memberError) { console.error("Server memberships:",memberError); return; }
-    const ids = [...new Set((memberships || []).map(x=>x.server_id))];
-    const { data: servers, error: serverError } = await backend.from("chat_servers").select("id,name,description,icon_url,owner_id,is_system").in("id",ids);
-    if (serverError) { console.error("Servers:",serverError); return; }
-    rows=servers||[];
-    const {data:unreadRows}=ids.length?await backend.from("messages").select("server_id,timestamp,userId,senderId").in("server_id",ids).neq("userId",user.id).order("timestamp",{ascending:false}).limit(1000):{data:[]};
-    const unread=new Set((unreadRows||[]).filter(m=>Number(m.timestamp||0)>Number(localStorage.getItem("cg-channel-read:"+user.id+":"+m.server_id+":"+m.channel_id)||0)&&!(m.server_id===activeChatServerId&&m.channel_id===activeChatChannelId&&!isDMView)).map(m=>m.server_id));
-    chatServerRailCache={userId:user.id,rows,unread};
-    forceChatServerRailRefresh=false;
-  }
-  if (!rows.length) { document.getElementById("active-server-name").textContent="No servers"; return; }
-  if (!rows.some(s=>s.id===activeChatServerId)) activeChatServerId=(rows.find(s=>s.is_system)||rows[0]).id;
-  const railSignature=rows.map(x=>[x.id,x.name,x.icon_url||"",x.is_system?1:0].join("|")).join(";");
-  if(rail.dataset.serverSignature!==railSignature||rail.dataset.serverUserId!==user.id){
-    rail.innerHTML='<button class="server-rail-btn" id="open-dms-btn" title="Direct messages" aria-label="Direct messages">✉</button><button class="server-rail-btn add" id="create-server-btn" title="Create a server">+</button>';
-    document.getElementById("open-dms-btn")?.addEventListener("click",()=>showDMList(user));
-    for (const server of rows) {
-      const b=document.createElement("button");
-      b.className="server-rail-btn"+(server.id===activeChatServerId?" active":"");
-      b.title=server.name; b.setAttribute("aria-label",server.name);
-      if(server.icon_url) b.innerHTML='<img alt="" src="'+escapeHtml(server.icon_url)+'">';
-      else b.textContent=server.is_system?"NA":server.name.slice(0,2).toUpperCase();
-      if(chatServerRailCache.unread?.has(server.id))b.classList.add("has-unread");
-      b.addEventListener("click",async()=>{if(server.id===activeChatServerId)return;clearEphemeralSystemMessages();isDMView=false;isServerDMView=false;activeChatServerId=server.id;activeChatChannelId=null;await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);});
-      rail.appendChild(b);
-    }
-    document.getElementById("create-server-btn")?.addEventListener("click",()=>createOrJoinChatServer(user));
-    rail.dataset.serverSignature=railSignature;rail.dataset.serverUserId=user.id;
-  }else{
-    rail.querySelectorAll(".server-rail-btn").forEach(b=>{if(b.dataset.serverId)b.classList.toggle("active",b.dataset.serverId===activeChatServerId);});
-  }
-  rail.querySelectorAll(".server-rail-btn:not(#open-dms-btn):not(#create-server-btn)").forEach(b=>{if(b.dataset.serverId)b.classList.toggle("active",b.dataset.serverId===activeChatServerId);});
-  document.getElementById("open-dms-btn")?.classList.remove("active");
-  const serverButtons=[...rail.querySelectorAll(".server-rail-btn:not(.dm-shortcut)")].filter(b=>b.dataset.serverId||b.title&&b.title!=="Direct messages"&&b.title!=="Create a server");
-  serverButtons.forEach((b,i)=>{b.dataset.serverId=rows[i]?.id||"";});
-    activeChatServer=rows.find(s=>s.id===activeChatServerId);
-  document.getElementById("active-server-name").textContent=activeChatServer?.name||"Server";
-  const {data:categories,error:categoryError}=await backend.from("chat_categories").select("id,name,position").eq("server_id",activeChatServerId).order("position");
-  if(categoryError){console.error("Categories:",categoryError);return;}
-  activeChatCategories=categories||[];
+  isDMView=false; isServerDMView=false;
+  document.getElementById("chat-layout")?.classList.remove("dm-view");
+  const rail=document.getElementById("server-sidebar"),list=document.getElementById("channel-list");
+  if(!list||!user?.id)return;
+  await removeBackendChannel(dmRealtimeChannel); dmRealtimeChannel=null;
+  const {data:server,error:serverError}=await backend.from("chat_servers").select("id,name,description,icon_url,owner_id,is_system").eq("id","10000000-0000-4000-8000-000000000001").maybeSingle();
+  if(serverError||!server){console.error("Could not load NA chat:",serverError);showLocalSystemMessage("Could not load NA chat.",true);return;}
+  activeChatServerId=server.id;activeChatServer=server;
+  if(rail){rail.innerHTML="";rail.dataset.serverSignature="NA";rail.dataset.serverUserId=user.id;}
   const {data:channels,error:channelError}=await backend.from("chat_channels").select("id,name,channel_type,topic,position,is_private,category_id,slowmode_seconds").eq("server_id",activeChatServerId).order("position");
-  if(channelError){console.error("Channels:",channelError);return;}
-  activeChatChannels=channels||[]; list.innerHTML="";
-  const appendChannel=channel=>{
-    const b=document.createElement("button");b.className="channel-row"+(channel.id===activeChatChannelId?" active":"");b.dataset.channelId=channel.id;
-    b.innerHTML='<span class="hash">'+(channel.channel_type==="voice"?"◖":"#")+'</span><span>'+escapeHtml(channel.name)+'</span>';
-    b.addEventListener("click",()=>switchChatChannel(channel.id,user));list.appendChild(b);
-  };
-  for(const category of activeChatCategories){
-    const heading=document.createElement("div");heading.className="channel-category-heading";heading.textContent=category.name;heading.title="Tap to manage category";heading.addEventListener("click",()=>manageChatCategory(category,user));list.appendChild(heading);
-    activeChatChannels.filter(c=>c.category_id===category.id).forEach(appendChannel);
-  }
-  const uncategorized=activeChatChannels.filter(c=>!c.category_id);
-  if(uncategorized.length){const heading=document.createElement("div");heading.className="channel-category-heading";heading.textContent="Channels";list.appendChild(heading);uncategorized.forEach(appendChannel);}
-  if(!activeChatCategories.length)activeChatChannels.forEach((c,i)=>{if(!c.category_id&&list.querySelectorAll(".channel-row").length===0)appendChannel(c);});
-  if(!activeChatChannelId||!activeChatChannels.some(c=>c.id===activeChatChannelId)){
-    activeChatChannelId=(activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id||null;
-  }
+  if(channelError){console.error("NA chat room:",channelError);showLocalSystemMessage("Could not load the main chat room.",true);return;}
+  activeChatChannels=channels||[];activeChatCategories=[];list.innerHTML="";
+  if(!activeChatChannelId||!activeChatChannels.some(c=>c.id===activeChatChannelId))activeChatChannelId=(activeChatChannels.find(c=>c.id==="10000000-0000-4000-8000-000000000003")||activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id||null;
+  document.getElementById("active-server-name").textContent="NA";
+  document.getElementById("channel-sidebar").style.display="none";
+  const toggle=document.getElementById("chat-mode-toggle");
+  if(toggle){toggle.textContent="✉ Direct Messages";toggle.onclick=()=>showDMList(user);}
+  document.querySelector(".channel-title strong").textContent="NA Chat";
+  document.getElementById("create-channel-btn").textContent="+ New DM";
+  document.getElementById("create-channel-btn").onclick=()=>createChatConversation(user);
+  document.getElementById("create-category-btn").style.display="none";
+  document.getElementById("channel-settings-btn").style.display="none";
+  document.getElementById("server-settings-btn").style.display="none";
+  if(!activeChatChannelId){showLocalSystemMessage("The NA chat room is missing. Ask an admin to restore its default room.",true);return;}
   setActiveChatTitle(activeChatChannels.find(c=>c.id===activeChatChannelId));
-  document.getElementById("create-channel-btn").textContent="+ Channel";
-  document.getElementById("create-category-btn").style.display="";
-  document.getElementById("channel-settings-btn").style.display="";
-  document.getElementById("server-settings-btn").textContent="Settings";
-  document.getElementById("create-channel-btn").onclick=()=>createChatChannel(user);
-  document.getElementById("create-category-btn").onclick=()=>createChatCategory(user);
-  document.getElementById("channel-settings-btn").onclick=()=>manageChatChannel(user);
-  document.getElementById("server-settings-btn").onclick=()=>manageChatServer(user);
+  document.querySelector(".channel-title strong").textContent="NA Chat";
 }
-
 async function switchChatChannel(id,user){
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
   await refreshContextMentionUsers(user);
@@ -4305,6 +4276,7 @@ white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",
         const challengePayload = {
           text: isOmoggleCommand && !parsedText ? "Do you want to duel in Omoggle?" : parsedText,
           username: currentUsername,
+          userId: user.id,
           senderId: user.id,
           avatar: currentUsername && currentUsername.length > 0 ? currentUsername[0].toUpperCase() : "U",
           participants: participantIds,
@@ -4320,6 +4292,9 @@ white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",
 
         const { error } = await backend.from("whispers").insert([challengePayload]);
         if (error) throw error;
+        localPendingQueue=localPendingQueue.filter(m=>m.clientSideId!==clientSideId);
+        renderMessages();
+        if(isOmoggleCommand)showLocalSystemMessage("Omoggle duel invitation sent to @"+targetUsernames[0]+". They can accept it from Direct Messages.",false);
       } else {
         const { error } = await backend.from("messages").insert([{
           text: textToSend,
@@ -4336,7 +4311,7 @@ white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",
       }
     } catch (err) {
       console.error("Error sending message:", err);
-      showLocalSystemMessage(err.message || "Failed to deliver message payload channels.", true);
+      showLocalSystemMessage(err.message || "Failed to deliver message.", true);
       localPendingQueue = localPendingQueue.filter(m => m.clientSideId !== clientSideId);
       renderMessages();
     }
