@@ -597,6 +597,26 @@
     .badge-admin { color: #3b82f6; font-size: 0.72rem; background: rgba(59,130,246,0.12); padding: 2px 6px; border-radius: 99px; font-weight: 700; border: 1px solid rgba(59,130,246,0.2); text-transform: uppercase; margin-left: 4px; -webkit-text-fill-color: currentColor; }
     .badge-owner { color: #f59e0b; font-size: 0.72rem; background: rgba(245,158,11,0.12); padding: 2px 6px; border-radius: 99px; font-weight: 700; border: 1px solid rgba(245,158,11,0.2); text-transform: uppercase; margin-left: 4px; -webkit-text-fill-color: currentColor; }
     .profile-tag { font-size: 0.7rem; padding: 2px 7px; border-radius: 99px; font-weight: 700; border: 1px solid currentColor; margin-left: 4px; -webkit-text-fill-color: currentColor; }
+    .profile-tag-rainbow {
+      position: relative; display: inline-block; overflow: hidden; isolation: isolate;
+      color: #fff !important; -webkit-text-fill-color: #fff !important;
+      border: 1px solid rgba(255,255,255,.8) !important;
+      background: linear-gradient(110deg,#ff3030,#ff9d00,#fff000,#39e65a,#16c8ff,#6554ff,#d83cff,#ff3030);
+      background-size: 300% 100%; animation: rainbowTagFlow 4s linear infinite, rainbowTagGlow 2.2s ease-in-out infinite;
+      text-shadow: 0 1px 3px rgba(0,0,0,.75), 0 0 7px rgba(255,255,255,.55);
+      box-shadow: 0 0 5px rgba(255,255,255,.45), 0 0 11px rgba(255,80,190,.35), inset 0 1px 2px rgba(255,255,255,.45);
+    }
+    .profile-tag-rainbow::after {
+      content: ""; position: absolute; z-index: 1; top: -60%; bottom: -60%; left: -55%; width: 38%;
+      pointer-events: none; transform: skewX(-22deg);
+      background: linear-gradient(90deg,transparent,rgba(255,255,255,.15) 20%,rgba(255,255,255,.9) 50%,rgba(255,255,255,.15) 80%,transparent);
+      filter: blur(1px); animation: rainbowTagShine 2.8s ease-in-out infinite;
+    }
+    @keyframes rainbowTagFlow { to { background-position: 300% 50%; } }
+    @keyframes rainbowTagShine { 0%,18% { left: -55%; opacity: 0; } 35% { opacity: 1; } 68%,100% { left: 125%; opacity: 0; } }
+    @keyframes rainbowTagGlow { 0%,100% { filter: brightness(1); } 50% { filter: brightness(1.22); } }
+    @media (prefers-reduced-motion: reduce) { .profile-tag-rainbow { animation: none; background-position: 50% 50%; } .profile-tag-rainbow::after { animation: none; display: none; } }
+
     .grade-6th { color: #86efac; background: rgba(134,239,172,0.12); }
     .grade-7th { color: #f87171; background: rgba(248,113,113,0.12); }
     .grade-8th { color: #d4a017; background: rgba(212,160,23,0.12); }
@@ -3684,7 +3704,7 @@ brown:"#8b4513",chocolate:"#7b3f00",cocoa:"#d2691e",coffee:"#6f4e37",tan:"#d2b48
 white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",grey:"#9ca3af",charcoal:"#36454f",black:"#111827"
 };
 const requestedColor=(effectiveSegments[4]||"purple").toLowerCase();
-const color=colorNames[requestedColor]||(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(requestedColor)?requestedColor:"#c084fc");
+const color=requestedColor === "rainbow" ? "rainbow" : (colorNames[requestedColor]||(/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(requestedColor)?requestedColor:"#c084fc"));
             tags = [...tags.filter(tag => tag.label.toLowerCase() !== label.toLowerCase()), { label, color }].slice(-8);
           }
         }
@@ -4695,7 +4715,12 @@ function displayMessage(scroller, msgData) {
     grade: profile?.grade || "",
     tags: profile?.tags || []
   });
-  const profileTagsHTML = profileTags.map(tag => `<span class="profile-tag ${tag.className || ""}" style="${tag.className ? "" : `color:${safeTagColor(tag.color)};background:${safeTagColor(tag.color)}1f;`}">${escapeHtml(tag.label)}</span>`).join("");
+  const profileTagsHTML = profileTags.map(tag => {
+    const rainbow = !tag.className && String(tag.color).toLowerCase() === "rainbow";
+    const classes = ["profile-tag", tag.className || "", rainbow ? "profile-tag-rainbow" : ""].filter(Boolean).join(" ");
+    const style = tag.className || rainbow ? "" : `color:${safeTagColor(tag.color)};background:${safeTagColor(tag.color)}1f;`;
+    return `<span class="${classes}" style="${style}">${escapeHtml(tag.label)}</span>`;
+  }).join("");
 
   const whisperTag = msgData.isWhisper ? `<span style="color: #a855f7; font-size: 0.75rem; margin-left: 8px; background: rgba(168,85,247,0.12); padding: 2px 7px; border-radius: 99px; font-weight: 600; border: 1px solid rgba(168,85,247,0.2);">Whisper</span>` : "";
 
@@ -5096,7 +5121,7 @@ function setupAutocompleteEngine(input) {
 
     if (baseCommandContext === "/tag" && words[1]?.toLowerCase() === "give" && currentWordIdx === 4 && words.length >= 4) {
       const tagColorOptions = [
-        ["red","#ef4444"],["crimson","#dc143c"],["scarlet","#ff2400"],["maroon","#800000"],["burgundy","#800020"],["ruby","#e0115f"],["coral","#ff7f50"],["salmon","#fa8072"],["tomato","#ff6347"],
+        ["rainbow","rainbow"],        ["red","#ef4444"],["crimson","#dc143c"],["scarlet","#ff2400"],["maroon","#800000"],["burgundy","#800020"],["ruby","#e0115f"],["coral","#ff7f50"],["salmon","#fa8072"],["tomato","#ff6347"],
         ["orange","#f97316"],["tangerine","#f28500"],["amber","#ffbf00"],["gold","#ffd700"],["golden","#daa520"],["mustard","#e1ad01"],["yellow","#facc15"],["lemon","#fff44f"],
         ["lime","#a3e635"],["chartreuse","#7fff00"],["green","#22c55e"],["emerald","#50c878"],["jade","#00a86b"],["mint","#98ff98"],["teal","#14b8a6"],["turquoise","#40e0d0"],["aqua","#00ffff"],["cyan","#06b6d4"],
         ["blue","#3b82f6"],["azure","#007fff"],["cerulean","#2a52be"],["cobalt","#0047ab"],["indigo","#4b0082"],["navy","#000080"],["violet","#8b5cf6"],["purple","#a855f7"],["lavender","#b57edc"],["lilac","#c8a2c8"],["magenta","#ff00ff"],["fuchsia","#ff00ff"],["orchid","#da70d6"],["plum","#dda0dd"],["mauve","#e0b0ff"],
