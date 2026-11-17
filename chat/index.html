@@ -3528,10 +3528,16 @@ async function startChat(user) {
       function extractNamedTargets(source) {
         const targets = [];
         let normalized = source;
-        const atMatches = [...source.matchAll(/@/g)].reverse();
+        // @everyone is a special command target, not a cached username.
+        normalized = normalized.replace(/@everyone(?=$|[\s,!?;:])/gi, () => {
+          targets.push("everyone");
+          return "@everyone";
+        });
+        const atMatches = [...normalized.matchAll(/@/g)].reverse();
         for (const match of atMatches) {
           const start = match.index + 1;
-          const tail = source.slice(start);
+          const tail = normalized.slice(start);
+          if (/^everyone(?=$|[\s,!?;:])/i.test(tail)) continue;
           const username = knownUsernames.find(name =>
             tail.slice(0, name.length).toLowerCase() === name.toLowerCase() &&
             (tail.length === name.length || /[\s,!?;:]/.test(tail[name.length]))
