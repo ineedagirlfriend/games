@@ -913,7 +913,7 @@ function showDeviceBannedScreen() {
       </section>
     </main>`;
 }
-if (localStorage.getItem(DEVICE_BAN_STORAGE_KEY) === "true") showDeviceBannedScreen();
+// The saved flag is reconciled against the account ban on the next authenticated visit.
 
 let activeChatServerId = "10000000-0000-4000-8000-000000000001";
 let activeChatChannelId = "10000000-0000-4000-8000-000000000003";
@@ -2022,10 +2022,6 @@ setTimeout(() => {
 
 /* AUTH CHECK & SYNC USER ROLES / MUTE STATE */
 backend.auth.onAuthStateChange(async (event, session, authError) => {
-  if (localStorage.getItem(DEVICE_BAN_STORAGE_KEY) === "true") {
-    showDeviceBannedScreen();
-    return;
-  }
   const user = session?.user || null;
   if (!user) {
     if (event === "INITIAL_SESSION" && authError && authError.status !== 401) {
@@ -2075,10 +2071,21 @@ backend.auth.onAuthStateChange(async (event, session, authError) => {
       createdAt: Date.now()
     });
   } else {
-    if (profile.deviceBanned === true) {
-      localStorage.setItem(DEVICE_BAN_STORAGE_KEY, "true");
+    const savedDeviceBan = localStorage.getItem(DEVICE_BAN_STORAGE_KEY) === "true";
+    const savedDeviceBanUser = localStorage.getItem("devicebanned_user_id");
+    if (savedDeviceBan && (!savedDeviceBanUser || savedDeviceBanUser !== user.id)) {
       showDeviceBannedScreen();
       return;
+    }
+    if (profile.deviceBanned === true) {
+      localStorage.setItem(DEVICE_BAN_STORAGE_KEY, "true");
+      localStorage.setItem("devicebanned_user_id", user.id);
+      showDeviceBannedScreen();
+      return;
+    }
+    if (savedDeviceBan && savedDeviceBanUser === user.id) {
+      localStorage.removeItem(DEVICE_BAN_STORAGE_KEY);
+      localStorage.removeItem("devicebanned_user_id");
     }
     currentUsername = profile.username || currentUsername;
     currentUserRole = profile.role || "user";
@@ -2098,6 +2105,7 @@ backend.auth.onAuthStateChange(async (event, session, authError) => {
       const data = payload.new;
       if (data.deviceBanned === true) {
         localStorage.setItem(DEVICE_BAN_STORAGE_KEY, "true");
+        localStorage.setItem("devicebanned_user_id", user.id);
         showDeviceBannedScreen();
         return;
       }
@@ -3983,9 +3991,9 @@ white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",
       if (commandKey === "/unban" && isAdminPlus) {
         const targetUser = await resolveTargetUser();
         if (!targetUser) { showLocalSystemMessage("Syntax: /unban @username", true); return; }
-        const { error } = await backend.from("users").update({ "bannedUntil": 0, "banReason": null }).eq("id", targetUser.id);
+        const { error } = await backend.from("users").update({ "bannedUntil": 0, "banReason": null, deviceBanned: false }).eq("id", targetUser.id);
         if (error) { showLocalSystemMessage(`Failed to unban user: ${error.message}`, true); return; }
-        showLocalSystemMessage(`Lifted ban from user @${targetUser.username}.`, false);
+        showLocalSystemMessage(`Lifted account and device ban from @${targetUser.username}. Their browser will clear its saved device-ban flag the next time that account visits chat.`, false);
         await logModeratorEvent(`@${currentUsername} used /unban on @${targetUser.username}.`);
         return;
       }
