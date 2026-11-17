@@ -1110,10 +1110,19 @@ async function showDMList(user){
     const people=(members||[]).filter(m=>m.conversation_id===convo.id&&m.user_id!==user.id).map(m=>names.get(m.user_id)||"User");
     const label=convo.name||people.join(", ")||"Direct message";
     const lastRead=readTimes.get(convo.id)||0;
-    const unread=(recentDMs||[]).some(m=>m.conversation_id===convo.id&&m.sender_id!==user.id&&new Date(m.created_at).getTime()>lastRead);
-    const row=document.createElement("button");row.className="channel-row"+(unread?" has-unread":"");row.dataset.conversationId=convo.id;
-    row.innerHTML='<span class="dm-row-avatar"></span><span>'+escapeHtml(label)+'</span>'+(unread?'<span class="unread-dot" aria-label="Unread messages"></span>':"");
-    row.addEventListener("click",()=>loadDMConversation(convo,user));list.appendChild(row);
+    const ignored=isDMConversationIgnored(user.id,convo.id);
+    const unread=!ignored&&(recentDMs||[]).some(m=>m.conversation_id===convo.id&&m.sender_id!==user.id&&new Date(m.created_at).getTime()>lastRead);
+    const item=document.createElement("div");item.className="dm-list-item";item.style.cssText="display:flex;align-items:center;gap:6px;width:100%";
+    const row=document.createElement("button");row.type="button";row.className="channel-row"+(unread?" has-unread":"")+(ignored?" dm-ignored":"");row.dataset.conversationId=convo.id;row.style.flex="1;min-width:0";
+    row.innerHTML='<span class="dm-row-avatar"></span><span>'+escapeHtml(label)+(ignored?'<small style="display:block;color:#94a3b8;font-size:.72rem">Ignored</small>':"")+'</span>'+(unread?'<span class="unread-dot" aria-label="Unread messages"></span>':"");
+    row.addEventListener("click",()=>loadDMConversation(convo,user));
+    const more=document.createElement("button");more.type="button";more.className="chat-ui-btn";more.textContent="⋯";more.title="DM options";more.setAttribute("aria-label","DM options for "+label);more.style.cssText="padding:8px 11px;min-width:42px;flex:none";
+    more.addEventListener("click",async e=>{e.stopPropagation();const action=await openChatActionMenu(label,"Manage this direct message.",[
+      {label:ignored?"Stop ignoring":"Ignore (mute notifications)",value:"ignore"},
+      {label:"Remove DM from my list",value:"remove"},
+      {label:"Open conversation settings",value:"settings"}
+    ]);if(action==="ignore"){setDMConversationIgnored(user.id,convo.id,!ignored);await showDMList(user);}else if(action==="remove"){const yes=await openChatModal("Remove this DM?","This removes the conversation from your list. It does not delete the other person's copy.",null,[{label:"Cancel",value:false},{label:"Remove DM",value:true,danger:true}]);if(!yes)return;const {error}=await backend.from("chat_conversation_members").delete().eq("conversation_id",convo.id).eq("user_id",user.id);if(error)showLocalSystemMessage("Could not remove DM: "+error.message,true);else{if(activeChatConversationId===convo.id)await showDMList(user);else await showDMList(user);}}else if(action==="settings"){await loadDMConversation(convo,user);await manageDMConversation(user);}});
+    item.append(row,more);list.appendChild(item);
     const other=(members||[]).find(m=>m.conversation_id===convo.id&&m.user_id!==user.id);
     const rowAvatar=row.querySelector(".dm-row-avatar");
     if(other&&rowAvatar){rowAvatar.style.cssText="position:relative;display:block;width:30px;height:30px;min-width:30px;flex:0 0 30px;border-radius:50%;overflow:hidden";decorateAvatarElement(rowAvatar,other.user_id,names.get(other.user_id)||label,(names.get(other.user_id)||label).slice(0,1).toUpperCase());}
@@ -1294,6 +1303,11 @@ function uiAlert(message){
   toast.textContent=String(message);toast.style.display="block";clearTimeout(toast._hideTimer);toast._hideTimer=setTimeout(()=>{toast.style.display="none";},3600);
 }
 
+function dmIgnoreStorageKey(userId){return "cg-ignored-dms:"+userId;}
+function getIgnoredDMIds(userId){try{return new Set(JSON.parse(localStorage.getItem(dmIgnoreStorageKey(userId))||"[]"));}catch{return new Set();}}
+function isDMConversationIgnored(userId,conversationId){return getIgnoredDMIds(userId).has(conversationId);}
+function setDMConversationIgnored(userId,conversationId,ignored){const ids=getIgnoredDMIds(userId);if(ignored)ids.add(conversationId);else ids.delete(conversationId);localStorage.setItem(dmIgnoreStorageKey(userId),JSON.stringify([...ids]));}
+
 async function createChatConversation(user){
   // Use the verified Supabase Auth identity for RLS ownership checks.
   const {data:{user:authUser},error:authError}=await backend.auth.getUser();
@@ -1312,6 +1326,24 @@ async function createChatConversation(user){
     groupName=field.input.value.trim()||null;
   }
   const type=chosen.length===1?"direct":"group";
+  if(type==="direct"){
+    const target=chosen[0];
+    const {data:blocks,error:blockError}=await backend.from("chat_user_blocks").select("blocker_id,blocked_id").or("and(blocker_id.eq."+creatorId+",blocked_id.eq."+target.id+"),and(blocker_id.eq."+target.id+",blocked_id.eq."+creatorId+")");
+    if(blockError){showLocalSystemMessage("Could not check DM privacy settings: "+blockError.message,true);return;}
+    if(blocks?.length){showLocalSystemMessage("This direct message can't be started because one of the accounts has blocked the other.",true);return;}
+    // Reuse an existing one-to-one DM rather than creating duplicate conversations.
+    const {data:myLinks,error:linkError}=await backend.from("chat_conversation_members").select("conversation_id").eq("user_id",creatorId);
+    if(linkError){showLocalSystemMessage("Could not check existing DMs: "+linkError.message,true);return;}
+    const myIds=[...new Set((myLinks||[]).map(x=>x.conversation_id))];
+    const {data:existing,error:existingError}=myIds.length?await backend.from("chat_conversations").select("id,conversation_type,name,icon_url,created_by,updated_at").in("id",myIds).eq("conversation_type","direct"):{data:[],error:null};
+    if(existingError){showLocalSystemMessage("Could not check existing DMs: "+existingError.message,true);return;}
+    if(existing?.length){
+      const {data:memberRows,error:memberError}=await backend.from("chat_conversation_members").select("conversation_id,user_id").in("conversation_id",existing.map(x=>x.id));
+      if(memberError){showLocalSystemMessage("Could not check existing DM members: "+memberError.message,true);return;}
+      const found=existing.find(c=>{const people=(memberRows||[]).filter(m=>m.conversation_id===c.id).map(m=>m.user_id).sort();return people.length===2&&people[0]===[creatorId,target.id].sort()[0]&&people[1]===[creatorId,target.id].sort()[1];});
+      if(found){await loadDMConversation(found,user);showLocalSystemMessage("You already have a DM with @"+target.username+". Opened the existing conversation.");return;}
+    }
+  }
   const {data:convo,error}=await backend.from("chat_conversations").insert({conversation_type:type,name:groupName,created_by:creatorId}).select("id").single();
   if(error){showLocalSystemMessage("Could not create DM: "+error.message,true);return;}
   const rows=[{conversation_id:convo.id,user_id:creatorId,added_by:creatorId},...chosen.map(u=>({conversation_id:convo.id,user_id:u.id,added_by:creatorId}))];
@@ -1389,7 +1421,7 @@ async function manageDMConversation(user){
   const actions=document.createElement("div");actions.style.cssText="display:grid;gap:9px";
   const options=[
     ...(isGroup?[["rename","Rename group"],["add","Add people"]]:[]),
-    ["block","Block a person"],["unblock","Unblock a person"],["leave","Leave conversation"]
+    ["block","Block a person"],["unblock","Unblock a person"],["ignore",isDMConversationIgnored(user.id,activeChatConversationId)?"Stop ignoring this conversation":"Ignore (mute notifications)"],["leave",isGroup?"Leave group":"Remove DM from my list"]
   ];
   for(const [value,label] of options){const b=document.createElement("button");b.type="button";b.className="chat-ui-btn";b.style.textAlign="left";b.textContent=label;b.dataset.action=value;actions.appendChild(b);}
   const chosenAction=await new Promise(resolve=>{
@@ -1397,6 +1429,13 @@ async function manageDMConversation(user){
     actions.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{document.querySelector(".chat-ui-backdrop")?.remove();resolve(b.dataset.action);}));
   });
   if(!chosenAction)return;
+  if(chosenAction==="ignore"){
+    const ignored=isDMConversationIgnored(user.id,activeChatConversationId);
+    setDMConversationIgnored(user.id,activeChatConversationId,!ignored);
+    showLocalSystemMessage(ignored?"Notifications unmuted for this conversation.":"This conversation is now ignored; it stays in your list but won't show unread alerts.");
+    await showDMList(user);
+    return;
+  }
   if(chosenAction==="rename"){
     const field=chatModalField("Group name",activeDMConversation.name||"","Group name");
     const save=await openChatModal("Rename group","Leave blank to use the member names.",field.wrap,[{label:"Cancel",value:null},{label:"Save",value:"save",primary:true}]);
@@ -1413,7 +1452,7 @@ async function manageDMConversation(user){
     const {error:addError}=await backend.from("chat_conversation_members").insert(rows);
     if(addError)showLocalSystemMessage(addError.message,true);else await loadDMConversation(activeDMConversation,user);
   }else if(chosenAction==="leave"){
-    const yes=await openChatModal("Leave conversation?","You will no longer see this conversation in your DM list.",null,[{label:"Stay",value:false},{label:"Leave",value:true,danger:true}]);
+    const yes=await openChatModal("Leave conversation?","This removes the conversation from your DM list only. It does not delete other members' copies.",null,[{label:"Stay",value:false},{label:"Leave",value:true,danger:true}]);
     if(!yes)return;
     const {error}=await backend.from("chat_conversation_members").delete().eq("conversation_id",activeChatConversationId).eq("user_id",user.id);
     if(error)showLocalSystemMessage(error.message,true);else await showDMList(user);
