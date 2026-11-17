@@ -1117,11 +1117,10 @@ async function showDMList(user){
     row.innerHTML='<span class="dm-row-avatar"></span><span>'+escapeHtml(label)+(ignored?'<small style="display:block;color:#94a3b8;font-size:.72rem">Ignored</small>':"")+'</span>'+(unread?'<span class="unread-dot" aria-label="Unread messages"></span>':"");
     row.addEventListener("click",()=>loadDMConversation(convo,user));
     const more=document.createElement("button");more.type="button";more.className="chat-ui-btn";more.textContent="⋯";more.title="DM options";more.setAttribute("aria-label","DM options for "+label);more.style.cssText="padding:8px 11px;min-width:42px;flex:none";
-    more.addEventListener("click",async e=>{e.stopPropagation();const action=await openChatActionMenu(label,"Manage this direct message.",[
-      {label:ignored?"Stop ignoring":"Ignore (mute notifications)",value:"ignore"},
-      {label:"Remove DM from my list",value:"remove"},
-      {label:"Open conversation settings",value:"settings"}
-    ]);if(action==="ignore"){setDMConversationIgnored(user.id,convo.id,!ignored);await showDMList(user);}else if(action==="remove"){const yes=await openChatModal("Remove this DM?","This removes the conversation from your list. It does not delete the other person's copy.",null,[{label:"Cancel",value:false},{label:"Remove DM",value:true,danger:true}]);if(!yes)return;const {error}=await backend.from("chat_conversation_members").delete().eq("conversation_id",convo.id).eq("user_id",user.id);if(error)showLocalSystemMessage("Could not remove DM: "+error.message,true);else{if(activeChatConversationId===convo.id)await showDMList(user);else await showDMList(user);}}else if(action==="settings"){await loadDMConversation(convo,user);await manageDMConversation(user);}});
+    more.addEventListener("click",async e=>{e.stopPropagation();const action=await openChatActionMenu(label,"Direct message options.",[
+      {label:ignored?"Unignore":"Ignore",value:"ignore"},
+      {label:"Remove DM from my list",value:"remove"}
+    ]);if(action==="ignore"){setDMConversationIgnored(user.id,convo.id,!ignored);await showDMList(user);}else if(action==="remove"){const yes=await openChatModal("Remove this DM?","This removes the conversation from your list. It does not delete the other person's copy.",null,[{label:"Cancel",value:false},{label:"Remove DM",value:true,danger:true}]);if(!yes)return;const {error}=await backend.from("chat_conversation_members").delete().eq("conversation_id",convo.id).eq("user_id",user.id);if(error)showLocalSystemMessage("Could not remove DM: "+error.message,true);else await showDMList(user);}});
     item.append(row,more);list.appendChild(item);
     const other=(members||[]).find(m=>m.conversation_id===convo.id&&m.user_id!==user.id);
     const rowAvatar=row.querySelector(".dm-row-avatar");
