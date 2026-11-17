@@ -894,6 +894,7 @@ let isServerDMView = false;
 let unreadRealtimeChannel=null;
 let unreadRefreshInProgress=false;
 let unreadPollInterval=null;
+let contextMentionUsers=[];
 
 async function refreshServerUnreadIndicators(user){
  if(!user?.id||unreadRefreshInProgress)return;
@@ -1001,7 +1002,8 @@ async function startUnreadRealtime(user){
 
 
 async function showDMList(user){
-  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
+  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;
+  contextMentionUsers=currentUser?[{id:currentUser.id,username:currentUsername,role:currentUserRole}]:[];activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
   await removeBackendChannel(publicChannel);publicChannel=null;
   await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
   await removeBackendChannel(pollsChannel);pollsChannel=null;
@@ -1258,6 +1260,7 @@ async function loadDMConversation(convo,user){
   dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];
   const {data:members}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",convo.id);
   const ids=(members||[]).map(m=>m.user_id);
+  await refreshContextMentionUsers(user);
   const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
   const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
   const label=convo.name||(ids.filter(id=>id!==user.id).map(id=>names.get(id)||"User").join(", "))||"Direct message";
@@ -1442,6 +1445,7 @@ async function loadChatNavigation(user) {
 }
 
 async function switchChatChannel(id,user){
+  await refreshContextMentionUsers(user);
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
   document.getElementById("open-dms-btn")?.classList.remove("active");
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.toggle("active",b.dataset.serverId===activeChatServerId));
@@ -3445,7 +3449,7 @@ async function startChat(user) {
       return;
     }
 
-    if (isDMView && activeChatConversationId) {
+    if (isDMView && activeChatConversationId && !textToSend.startsWith("/")) {
       const { error } = await backend.from("chat_dm_messages").insert({conversation_id:activeChatConversationId,sender_id:currentUser.id,content:textToSend});
       if (error) { showLocalSystemMessage(error.message || "Could not send DM.", true); return; }
       input.value = "";
@@ -4154,29 +4158,23 @@ async function startChat(user) {
       return;
     }
 
-    if (isOmoggleCommand && segments[1]) {
-      const firstTarget = segments[1].replace(/^@/, "").replace(/[.,!?;:]+$/, "").toLowerCase();
-      if (firstTarget === currentUsername.toLowerCase()) {
-        showLocalSystemMessage("You can't send an Omoggle challenge to yourself. Choose another user.", true);
-        return;
-      }
-    }
-
     if (isWhisperCommand || isOmoggleCommand) {
-      let i = 1;
-      while (i < segments.length) {
-        let token = segments[i];
-        if (token.startsWith("@")) {
-          targetUsernames.push(token.substring(1).replace(/[.,!?;:]+$/, '').toLowerCase());
-          i++;
-        } else if (targetUsernames.length === 0) {
-          targetUsernames.push(token.toLowerCase().replace(/[.,!?;:]+$/, ''));
-          i++;
-        } else {
-          break;
-        }
+      const commandTail=textToSend.slice(segments[0].length).trim();
+      const candidates=[...new Set(localUsersCache.map(u=>u.username).filter(Boolean))].sort((a,b)=>b.length-a.length);
+      const normalizedTail=commandTail.replace(/^@/,"").toLowerCase();
+      const target=candidates.find(name=>{
+        const n=name.toLowerCase();
+        return normalizedTail===n||normalizedTail.startsWith(n+" ")||normalizedTail.startsWith(n+",")||normalizedTail.startsWith(n+".");
+      });
+      if(target){
+        targetUsernames=[target.toLowerCase()];
+        parsedText=commandTail.replace(/^@/,"").slice(target.length).trim().replace(/^[,!?;:]+/,"").trim();
+      }else{
+        const first=commandTail.split(/\s+/)[0]||"";
+        if(first){targetUsernames=[first.replace(/^@/,"").replace(/[.,!?;:]+$/,"").toLowerCase()];parsedText=commandTail.slice(first.length).trim();}
       }
-      parsedText = segments.slice(i).join(" ");
+      if(isOmoggleCommand&&!targetUsernames.length){showLocalSystemMessage("Usage: /omoggle @username — send a private Omoggle duel invitation.",true);return;}
+      if(isOmoggleCommand&&targetUsernames[0]===currentUsername.toLowerCase()){showLocalSystemMessage("You can't send an Omoggle challenge to yourself. Choose another user.",true);return;}
     }
 
     const clientSideId = "msg-" + Date.now() + Math.random().toString(36).substring(2);
@@ -4941,6 +4939,23 @@ function displayMessage(scroller, msgData) {
   scroller.appendChild(div);
 }
 
+async function refreshContextMentionUsers(user){
+  if(!user?.id)return;
+  try{
+    let ids=[user.id];
+    if(isDMView&&activeChatConversationId){
+      const {data,error}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",activeChatConversationId);
+      if(error)throw error;ids=(data||[]).map(x=>x.user_id);
+    }else if(!isDMView&&activeChatServerId){
+      const {data,error}=await backend.from("chat_server_members").select("user_id").eq("server_id",activeChatServerId);
+      if(error)throw error;ids=(data||[]).map(x=>x.user_id);
+    }
+    ids=[...new Set(ids)];
+    const {data,error}=await backend.from("users").select("id,username,role,grade,tags").in("id",ids);
+    if(error)throw error;contextMentionUsers=data||[];
+  }catch(error){console.warn("Context mention lookup failed:",error);contextMentionUsers=currentUser?[{id:currentUser.id,username:currentUsername,role:currentUserRole}]:[];}
+}
+
 function getMentionSuggestionItems(searchStr = "") {
   const normalizedSearch = (searchStr || "").toLowerCase();
   const isAdminPlus = currentUserRole === "admin" || currentUserRole === "owner";
@@ -4952,10 +4967,8 @@ function getMentionSuggestionItems(searchStr = "") {
     ] : [])
   ].filter(item => item.username.startsWith(normalizedSearch));
 
-  // Include every account, including the signed-in user and privileged accounts.
-  // This lets users mention themselves, admins, and owners consistently in
-  // normal messages and target-taking commands such as /omoggle and /w.
-  const filteredUsers = localUsersCache
+  const sourceUsers=isDMView?(activeChatConversationId?contextMentionUsers:(currentUser?[{id:currentUser.id,username:currentUsername,role:currentUserRole}]:[])):(activeChatServerId?contextMentionUsers:localUsersCache);
+  const filteredUsers = sourceUsers
     .filter(u => u.username && u.username.toLowerCase().startsWith(normalizedSearch))
     .map(u => ({
       ...u,
