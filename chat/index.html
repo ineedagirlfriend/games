@@ -5094,6 +5094,46 @@ function setupAutocompleteEngine(input) {
       }
     }
 
+    if (baseCommandContext === "/tag" && words[1]?.toLowerCase() === "give" && currentWordIdx === 4 && words.length >= 4) {
+      const tagColorOptions = [
+        ["red","#ef4444"],["crimson","#dc143c"],["scarlet","#ff2400"],["maroon","#800000"],["burgundy","#800020"],["ruby","#e0115f"],["coral","#ff7f50"],["salmon","#fa8072"],["tomato","#ff6347"],
+        ["orange","#f97316"],["tangerine","#f28500"],["amber","#ffbf00"],["gold","#ffd700"],["golden","#daa520"],["mustard","#e1ad01"],["yellow","#facc15"],["lemon","#fff44f"],
+        ["lime","#a3e635"],["chartreuse","#7fff00"],["green","#22c55e"],["emerald","#50c878"],["jade","#00a86b"],["mint","#98ff98"],["teal","#14b8a6"],["turquoise","#40e0d0"],["aqua","#00ffff"],["cyan","#06b6d4"],
+        ["blue","#3b82f6"],["azure","#007fff"],["cerulean","#2a52be"],["cobalt","#0047ab"],["indigo","#4b0082"],["navy","#000080"],["violet","#8b5cf6"],["purple","#a855f7"],["lavender","#b57edc"],["lilac","#c8a2c8"],["magenta","#ff00ff"],["fuchsia","#ff00ff"],["orchid","#da70d6"],["plum","#dda0dd"],["mauve","#e0b0ff"],
+        ["pink","#ec4899"],["hotpink","#ff69b4"],["rose","#f43f5e"],["blush","#de5d83"],["peach","#ffcba4"],["apricot","#fbceb1"],
+        ["brown","#8b4513"],["chocolate","#7b3f00"],["cocoa","#d2691e"],["coffee","#6f4e37"],["tan","#d2b48c"],["beige","#f5f5dc"],["khaki","#c3b091"],["camel","#c19a6b"],["sienna","#a0522d"],["ochre","#cc7722"],["copper","#b87333"],["bronze","#cd7f32"],
+        ["white","#f8fafc"],["ivory","#fffff0"],["cream","#fffdd0"],["silver","#c0c0c0"],["gray","#9ca3af"],["grey","#9ca3af"],["charcoal","#36454f"],["black","#111827"]
+      ];
+      const colorSearch = currentWord.toLowerCase();
+      const matchingColors = tagColorOptions.filter(([name]) => name.startsWith(colorSearch));
+      if (matchingColors.length) {
+        currentMentionType = "tag-color";
+        activeSuggestionIndex = 0;
+        const colorPopover = document.getElementById("suggestions-popover");
+        colorPopover.innerHTML = "";
+        matchingColors.forEach(([name, hex], idx) => {
+          const item = document.createElement("div");
+          item.className = "suggestion-item" + (idx === 0 ? " selected" : "");
+          const textColor = ["yellow","lemon","lime","mint","turquoise","aqua","white","ivory","cream","silver","beige","tan","peach","apricot"].includes(name) ? "#171717" : "#ffffff";
+          item.innerHTML = '<span style="display:inline-flex;align-items:center;justify-content:center;min-width:76px;padding:5px 11px;border-radius:7px;background:' + hex + ';color:' + textColor + ';font-weight:700;text-shadow:0 1px 2px rgba(0,0,0,.25)">' + name + '</span>';
+          attachTapOrScrollHandler(item, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const before = val.substring(0, wordStartIdx);
+            const after = val.substring(selectionStart);
+            input.value = before + name + (after.startsWith(" ") ? after : " " + after);
+            const cursor = before.length + name.length + 1;
+            input.focus();
+            input.selectionStart = input.selectionEnd = cursor;
+            closePopover();
+          });
+          colorPopover.appendChild(item);
+        });
+        colorPopover.style.display = "block";
+        return;
+      }
+    }
+
     const lastAtIdx = val.lastIndexOf("@", selectionStart - 1);
     if (lastAtIdx !== -1 && (lastAtIdx === 0 || /\s/.test(val[lastAtIdx - 1]))) {
       const searchStr = val.substring(lastAtIdx + 1, selectionStart).toLowerCase();
