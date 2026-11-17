@@ -986,7 +986,7 @@ async function refreshServerUnreadIndicators(user){
 }
 
 async function addUnreadDMShortcut(conversationId,user){
-  if(!conversationId||!user?.id||document.querySelector('.server-rail-btn.dm-shortcut[data-conversation-id="'+conversationId+'"]'))return;
+  if(!conversationId||!user?.id||isDMConversationIgnored(user.id,conversationId)||document.querySelector('.server-rail-btn.dm-shortcut[data-conversation-id="'+conversationId+'"]'))return;
   const {data:members}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",conversationId);
   const other=(members||[]).find(m=>m.user_id!==user.id);
   if(!other)return;
