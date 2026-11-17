@@ -933,6 +933,20 @@ let activeChatConversationId = null;
 let activeDMConversation = null;
 let dmRealtimeChannel = null;
 let isServerDMView = false;
+let chatViewTransitionId = 0;
+function isCurrentChatViewTransition(id){return id===chatViewTransitionId;}
+function setChatViewHeader(title,mode){
+  const heading=document.querySelector('.channel-title strong');
+  if(heading)heading.textContent=title;
+  const active=document.getElementById('active-server-name');
+  if(active)active.textContent=mode==='na'?'NA':'Direct Messages';
+  const layout=document.getElementById('chat-layout');
+  const sidebar=document.getElementById('channel-sidebar');
+  if(layout)layout.classList.toggle('dm-view',mode!=='na');
+  if(sidebar)sidebar.style.display=mode==='na'?'none':'flex';
+  const toggle=document.getElementById('chat-mode-toggle');
+  if(toggle){toggle.textContent=mode==='na'?'✉ Direct Messages':'← NA Chat';toggle.setAttribute('aria-label',toggle.textContent);}
+}
 let unreadRealtimeChannel=null;
 let unreadRefreshInProgress=false;
 let unreadPollInterval=null;
@@ -1051,18 +1065,16 @@ async function startUnreadRealtime(user){
 
 
 async function showDMList(user){
-  isDMView=true;isServerDMView=false;document.getElementById("chat-layout")?.classList.add("dm-view");clearEphemeralSystemMessages();activeChatServerId=null;
+  const viewToken=++chatViewTransitionId;
+  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;
+  setChatViewHeader("Direct Messages","dms");
+  const modeToggle=document.getElementById("chat-mode-toggle");if(modeToggle)modeToggle.onclick=()=>returnToNAChat(user);
   contextMentionUsers=currentUser?[{id:currentUser.id,username:currentUsername,role:currentUserRole}]:[];activeChatChannelId=null;activeChatServer=null;activeChatConversationId=null;activeDMConversation=null;
-  await removeBackendChannel(publicChannel);publicChannel=null;
-  await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
-  await removeBackendChannel(pollsChannel);pollsChannel=null;
-  await removeBackendChannel(privateChannel);privateChannel=null;
   dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages();
-  document.getElementById("active-server-name").textContent="Direct Messages";
-  document.getElementById("channel-sidebar").style.display="flex";
-  const modeToggle=document.getElementById("chat-mode-toggle");
-  if(modeToggle){modeToggle.textContent="← NA Chat";modeToggle.onclick=async()=>{await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);};}
-  document.querySelector(".channel-title strong").textContent="Direct Messages";
+  await removeBackendChannel(publicChannel);if(!isCurrentChatViewTransition(viewToken))return;publicChannel=null;
+  await removeBackendChannel(dmRealtimeChannel);if(!isCurrentChatViewTransition(viewToken))return;dmRealtimeChannel=null;
+  await removeBackendChannel(pollsChannel);if(!isCurrentChatViewTransition(viewToken))return;pollsChannel=null;
+  await removeBackendChannel(privateChannel);if(!isCurrentChatViewTransition(viewToken))return;privateChannel=null;
   const rail=document.getElementById("server-sidebar");
   const dmButton=document.getElementById("open-dms-btn");
   const addButton=document.getElementById("create-server-btn");
@@ -1074,18 +1086,24 @@ async function showDMList(user){
   const inbox=document.createElement("button");inbox.className="channel-row";inbox.dataset.serverDmRow="true";inbox.textContent="✉ Server DM · Requests & alerts";inbox.addEventListener("click",()=>loadServerDM(user));list.appendChild(inbox);
   const serverDmReadAt=Number(localStorage.getItem("cg-server-dm-read:"+user.id)||0);
   const {data:serverDmUnreadRows}=await backend.from("whispers").select("timestamp,type,isOmoggleInvite,server_id").contains("participants",[user.id]).order("timestamp",{ascending:false}).limit(300);
+  if(!isCurrentChatViewTransition(viewToken))return;
   const hasServerDmUnread=(serverDmUnreadRows||[]).some(m=>(m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice")&&Number(m.timestamp||0)>serverDmReadAt);
   if(hasServerDmUnread){inbox.classList.add("has-unread");inbox.innerHTML='✉ Server DM · Requests & alerts <span class="unread-dot" aria-label="Unread alerts"></span>';}
   const {data:links,error}=await backend.from("chat_conversation_members").select("conversation_id").eq("user_id",user.id);
+  if(!isCurrentChatViewTransition(viewToken))return;
   if(error){console.error("DM list:",error);return;}
   const ids=[...new Set((links||[]).map(x=>x.conversation_id))];
   const {data:conversations}=ids.length?await backend.from("chat_conversations").select("id,conversation_type,name,icon_url,created_by,updated_at").in("id",ids).order("updated_at",{ascending:false}):{data:[]};
+  if(!isCurrentChatViewTransition(viewToken))return;
   const {data:members}=ids.length?await backend.from("chat_conversation_members").select("conversation_id,user_id,last_read_at").in("conversation_id",ids):{data:[]};
+  if(!isCurrentChatViewTransition(viewToken))return;
   const readTimes=new Map((members||[]).filter(m=>m.user_id===user.id).map(m=>[m.conversation_id,m.last_read_at?new Date(m.last_read_at).getTime():0]));
   const readValues=[...readTimes.values()],earliestRead=readValues.length?Math.min(...readValues):0;
   const {data:recentDMs}=ids.length?await backend.from("chat_dm_messages").select("conversation_id,sender_id,created_at").in("conversation_id",ids).gt("created_at",new Date(earliestRead).toISOString()).order("created_at",{ascending:false}).limit(2000):{data:[]};
+  if(!isCurrentChatViewTransition(viewToken))return;
   const userIds=[...new Set((members||[]).map(m=>m.user_id))];
   const {data:profiles}=userIds.length?await backend.from("users").select("id,username").in("id",userIds):{data:[]};
+  if(!isCurrentChatViewTransition(viewToken))return;
   const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
   const unreadShortcuts=[];
   for(const convo of conversations||[]){
@@ -1119,26 +1137,27 @@ async function showDMList(user){
 }
 
 async function loadServerDM(user){
-  isDMView=true;isServerDMView=true;document.getElementById("chat-layout")?.classList.add("dm-view");document.getElementById("channel-sidebar").style.display="flex";activeChatConversationId=null;activeDMConversation=null;activeChatChannelId=null;activeChatServerId=null;activeChatServer=null;
+  const viewToken=++chatViewTransitionId;
+  isDMView=true;isServerDMView=true;setChatViewHeader("Server DM","dms");activeChatConversationId=null;activeDMConversation=null;activeChatChannelId=null;activeChatServerId=null;activeChatServer=null;
   document.getElementById("open-dms-btn")?.classList.add("active");
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.remove("active"));
   document.querySelectorAll("#channel-list .channel-row").forEach(b=>b.classList.toggle("active",b.dataset.serverDmRow==="true"));
   if(user?.id){localStorage.setItem("cg-server-dm-read:"+user.id,String(Date.now()));document.querySelectorAll(".server-rail-btn.dm-shortcut").forEach(b=>{if(b.dataset.serverDm==="true"||b.title.startsWith("Server DM"))b.remove();});document.querySelectorAll("#channel-list .channel-row").forEach(b=>{if(b.textContent.includes("Server DM"))b.classList.remove("has-unread");});if(!document.querySelector(".server-rail-btn.dm-shortcut"))document.querySelector(".dm-shortcut-divider")?.remove();}
-  await removeBackendChannel(publicChannel);publicChannel=null;
-  await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
-  await removeBackendChannel(pollsChannel);pollsChannel=null;
-  await removeBackendChannel(privateChannel);privateChannel=null;
-  dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];clearEphemeralSystemMessages();
-  document.querySelector(".channel-title strong").textContent="Server DM";
-  document.getElementById("active-server-name").textContent="Server DM";
+  dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];clearEphemeralSystemMessages();renderMessages();
+  await removeBackendChannel(publicChannel);if(!isCurrentChatViewTransition(viewToken))return;publicChannel=null;
+  await removeBackendChannel(dmRealtimeChannel);if(!isCurrentChatViewTransition(viewToken))return;dmRealtimeChannel=null;
+  await removeBackendChannel(pollsChannel);if(!isCurrentChatViewTransition(viewToken))return;pollsChannel=null;
+  await removeBackendChannel(privateChannel);if(!isCurrentChatViewTransition(viewToken))return;privateChannel=null;
   const {data:items,error}=await backend.from("whispers")
     .select("id,text,username,userId,senderId,avatar,role,timestamp,type,room_id,participants,isOmoggleInvite,inviteStatus,server_id")
     .contains("participants",[user.id])
     .order("timestamp",{ascending:true}).limit(300);
+  if(!isCurrentChatViewTransition(viewToken))return;
   if(error){uiAlert("Could not load your Server DM: "+error.message);return;}
   const relevant=(items||[]).filter(m=>m.isOmoggleInvite===true||(m.type==="mod_log"&&!!m.server_id)||m.type==="vc_invite"||m.type==="server_notice");
   const serverIds=[...new Set(relevant.map(m=>m.server_id).filter(Boolean))];
   const {data:servers}=serverIds.length?await backend.from("chat_servers").select("id,name").in("id",serverIds):{data:[]};
+  if(!isCurrentChatViewTransition(viewToken))return;
   const serverNames=new Map((servers||[]).map(x=>[x.id,x.name]));
   const inboxMessages=relevant.map(m=>({...m,isWhisper:true,isSystemMessage:true,username:m.type==="mod_log"||m.type==="server_notice"?"Server":m.username||"Server",text:((m.type==="mod_log"||m.type==="server_notice")&&m.server_id?"["+ (serverNames.get(m.server_id)||"Server") +" · "+(m.type==="mod_log"?"staff log":"notice")+"] ":"")+m.text,timestamp:m.timestamp?new Date(m.timestamp).getTime():Date.now()}));
   const {data:auditRows,error:auditError}=await backend.from("chat_audit_log").select("id,server_id,actor_id,action,target_user_id,details,created_at").order("created_at",{ascending:false}).limit(200);
@@ -1302,27 +1321,31 @@ async function createChatConversation(user){
 }
 
 async function loadDMConversation(convo,user){
-  document.getElementById("chat-layout")?.classList.add("dm-view");document.getElementById("channel-sidebar").style.display="flex";
-  const modeToggle=document.getElementById("chat-mode-toggle");if(modeToggle){modeToggle.textContent="← NA Chat";modeToggle.onclick=async()=>{await loadChatNavigation(user);if(activeChatChannelId)await switchChatChannel(activeChatChannelId,user);};}
-  isDMView=true;isServerDMView=false;clearEphemeralSystemMessages();activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=convo.id;activeDMConversation=convo;
+  const viewToken=++chatViewTransitionId;
+  isDMView=true;isServerDMView=false;setChatViewHeader(convo.name||"Direct Message","dms");
+  const modeToggle=document.getElementById("chat-mode-toggle");if(modeToggle)modeToggle.onclick=()=>returnToNAChat(user);
+  clearEphemeralSystemMessages();activeChatServerId=null;activeChatChannelId=null;activeChatServer=null;activeChatConversationId=convo.id;activeDMConversation=convo;
   document.getElementById("open-dms-btn")?.classList.add("active");
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(b=>b.classList.remove("active"));
-  await removeBackendChannel(publicChannel);publicChannel=null;
-  await removeBackendChannel(dmRealtimeChannel);dmRealtimeChannel=null;
-  await removeBackendChannel(pollsChannel);pollsChannel=null;
-  await removeBackendChannel(privateChannel);privateChannel=null;
-  dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];
+  dbPublicMessages=[];dbPrivateMessages=[];dbHistoricalMessages=[];renderMessages();
+  await removeBackendChannel(publicChannel);if(!isCurrentChatViewTransition(viewToken))return;publicChannel=null;
+  await removeBackendChannel(dmRealtimeChannel);if(!isCurrentChatViewTransition(viewToken))return;dmRealtimeChannel=null;
+  await removeBackendChannel(pollsChannel);if(!isCurrentChatViewTransition(viewToken))return;pollsChannel=null;
+  await removeBackendChannel(privateChannel);if(!isCurrentChatViewTransition(viewToken))return;privateChannel=null;
   const {data:members}=await backend.from("chat_conversation_members").select("user_id").eq("conversation_id",convo.id);
+  if(!isCurrentChatViewTransition(viewToken))return;
   const ids=(members||[]).map(m=>m.user_id);
   await refreshContextMentionUsers(user);
   const {data:profiles}=ids.length?await backend.from("users").select("id,username").in("id",ids):{data:[]};
+  if(!isCurrentChatViewTransition(viewToken))return;
   const names=new Map((profiles||[]).map(p=>[p.id,p.username]));
   const label=convo.name||(ids.filter(id=>id!==user.id).map(id=>names.get(id)||"User").join(", "))||"Direct message";
-  document.querySelector(".channel-title strong").textContent=label;
-  document.getElementById("active-server-name").textContent="Direct Messages";
+  setChatViewHeader(label,"dms");
   const {data:messages,error}=await backend.from("chat_dm_messages").select("id,content,sender_id,created_at,edited_at").eq("conversation_id",convo.id).is("deleted_at",null).order("created_at",{ascending:true}).limit(100);
+  if(!isCurrentChatViewTransition(viewToken))return;
   if(error){showLocalSystemMessage("Could not load this DM: "+error.message,true);return;}
   const {data:senders}=ids.length?await backend.from("users").select("id,username,role").in("id",ids):{data:[]};
+  if(!isCurrentChatViewTransition(viewToken))return;
   const senderMap=new Map((senders||[]).map(p=>[p.id,p]));
   dbPublicMessages=(messages||[]).map(m=>({id:m.id,text:m.content,username:senderMap.get(m.sender_id)?.username||"User",userId:m.sender_id,senderId:m.sender_id,role:senderMap.get(m.sender_id)?.role||"user",timestamp:new Date(m.created_at).getTime(),isWhisper:false,isSystemMessage:false,isDMMessage:true}));
   renderMessages(true);
@@ -1421,17 +1444,21 @@ let chatServerRailCache={userId:null,rows:null,unread:null};
 let forceChatServerRailRefresh=true;
 
 async function loadChatNavigation(user) {
+  const viewToken=++chatViewTransitionId;
   if (isDMView) { await removeBackendChannel(dmRealtimeChannel); dmRealtimeChannel=null; activeChatConversationId=null; activeDMConversation=null; }
   isDMView=false; isServerDMView=false;
-  document.getElementById("chat-layout")?.classList.remove("dm-view");
+  setChatViewHeader("NA Chat","na");
+  document.getElementById("chat-mode-toggle")?.addEventListener("click",()=>{}, {once:true});
   const rail=document.getElementById("server-sidebar"),list=document.getElementById("channel-list");
   if(!list||!user?.id)return;
   await removeBackendChannel(dmRealtimeChannel); dmRealtimeChannel=null;
   const {data:server,error:serverError}=await backend.from("chat_servers").select("id,name,description,icon_url,owner_id,is_system").eq("id","10000000-0000-4000-8000-000000000001").maybeSingle();
+  if(!isCurrentChatViewTransition(viewToken))return;
   if(serverError||!server){console.error("Could not load NA chat:",serverError);showLocalSystemMessage("Could not load NA chat.",true);return;}
   activeChatServerId=server.id;activeChatServer=server;
   if(rail){rail.innerHTML="";rail.dataset.serverSignature="NA";rail.dataset.serverUserId=user.id;}
   const {data:channels,error:channelError}=await backend.from("chat_channels").select("id,name,channel_type,topic,position,is_private,category_id,slowmode_seconds").eq("server_id",activeChatServerId).order("position");
+  if(!isCurrentChatViewTransition(viewToken))return;
   if(channelError){console.error("NA chat room:",channelError);showLocalSystemMessage("Could not load the main chat room.",true);return;}
   activeChatChannels=channels||[];activeChatCategories=[];list.innerHTML="";
   if(!activeChatChannelId||!activeChatChannels.some(c=>c.id===activeChatChannelId))activeChatChannelId=(activeChatChannels.find(c=>c.id==="10000000-0000-4000-8000-000000000003")||activeChatChannels.find(c=>c.channel_type==="text")||activeChatChannels[0])?.id||null;
@@ -1449,7 +1476,13 @@ async function loadChatNavigation(user) {
   setActiveChatTitle(activeChatChannels.find(c=>c.id===activeChatChannelId));
   document.querySelector(".channel-title strong").textContent="NA Chat";
 }
+async function returnToNAChat(user){
+  await loadChatNavigation(user);
+  if(isDMView||!activeChatChannelId)return;
+  await switchChatChannel(activeChatChannelId,user);
+}
 async function switchChatChannel(id,user){
+  ++chatViewTransitionId;
   isDMView=false;isServerDMView=false;clearEphemeralSystemMessages();activeChatChannelId=id;
   await refreshContextMentionUsers(user);
   document.getElementById("open-dms-btn")?.classList.remove("active");
