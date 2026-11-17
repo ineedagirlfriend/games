@@ -1787,7 +1787,7 @@ const EX_COMMANDS = [
   { name: "/ipban", desc: "Permanently block the browser profile used by a user {/ipban @username}" },
   { name: "/ban", desc: "Ban a user for a duration {/ban @user time reason}" },
   { name: "/clearstorage", desc: "Delete all chat uploads while keeping profile pictures (Admin/Owner)" },
-  { name: "/deleteall", desc: "Clear messages, polls, and poll votes in the currently selected server channel {/deleteall}" },
+  { name: "/deleteall", desc: "Clear messages, polls, and poll votes from NA main chat {/deleteall}" },
   { name: "/deleteuser", desc: "Delete a user from the database {/deleteuser @user}" },
   { name: "/modlogs", desc: "View recent moderator audit events {/modlogs}" },
   { name: "/serverinfo", desc: "View chat server statistics {/serverinfo}" },
@@ -4106,11 +4106,11 @@ white:"#f8fafc",ivory:"#fffff0",cream:"#fffdd0",silver:"#c0c0c0",gray:"#9ca3af",
 
       if (commandKey === "/deleteall" && isAdminPlus) {
         if (isDMView || !activeChatServerId || !activeChatChannelId) {
-          showLocalSystemMessage("/deleteall only works inside a selected server channel. It never deletes DMs or Server DM alerts.", true);
+          showLocalSystemMessage("/deleteall only works in NA main chat. It never deletes DMs or Server DM alerts.", true);
           return;
         }
         const channelName = activeChatChannels.find(c=>c.id===activeChatChannelId)?.name||"this channel";
-        const confirmed = await uiConfirm("Delete every message AND poll in #"+channelName+"? This affects only this channel in this server, including poll options and votes. DMs and Server DM alerts are untouched. This cannot be undone.");
+        const confirmed = await uiConfirm("Delete every message AND poll in NA main chat? This includes poll options and votes. DMs and Server DM alerts are untouched. This cannot be undone.");
         if (!confirmed) return;
 
         const {data:deletedPolls,error:pollDeleteError} = await backend.from("chat_polls")
