@@ -11,6 +11,9 @@ let hideTimer = null;
 let replaceTimer = null;
 let activeChannel = null;
 let dmMemberships = new Set();
+const seenMessageIds = new Set();
+let pollingStartedAt = Date.now() - 1500;
+let pollingBusy = false;
 
 function escapeRegExp(value) {
   return String(value || "").split("").map(char => "\\^$.*+?()[]{}|".includes(char) ? "\\" + char : char).join("");
@@ -30,12 +33,7 @@ function isIgnoredDM(userId, conversationId) {
     return Array.isArray(ignored) && ignored.includes(conversationId);
   } catch (_) { return false; }
 }
-function chatIsActiveElsewhere() {
-  if (isChatPage) return true;
-  if (!currentUser?.id) return false;
-  const stamp = Number(localStorage.getItem("cg-chat-active:" + currentUser.id) || 0);
-  return stamp > 0 && Date.now() - stamp < 6500;
-}
+function chatIsActiveElsewhere() { return isChatPage; }
 function canShowToast() {
   return document.visibilityState === "visible" && !chatIsActiveElsewhere();
 }
@@ -43,7 +41,7 @@ function ensureToast() {
   if (toast) return toast;
   const style = document.createElement("style");
   style.textContent = [
-    ".cg-mention-toast{position:fixed;z-index:2147483000;top:max(14px,env(safe-area-inset-top));left:14px;width:min(370px,calc(100vw - 28px));padding:14px 16px;text-align:left;color:#f8fafc;background:rgba(23,26,39,.48);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);border:1px solid rgba(203,213,225,.22);border-radius:13px;box-shadow:0 10px 28px rgba(0,0,0,.16);font:inherit;cursor:default;pointer-events:none;transform:translateX(calc(-100% - 24px));opacity:0;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .22s ease;overflow:hidden}",
+    ".cg-mention-toast{position:fixed;z-index:2147483647!important;isolation:isolate;top:max(14px,env(safe-area-inset-top));left:14px;width:min(370px,calc(100vw - 28px));padding:14px 16px;text-align:left;color:#f8fafc;background:rgba(23,26,39,.48);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);border:1px solid rgba(203,213,225,.22);border-radius:13px;box-shadow:0 10px 28px rgba(0,0,0,.16);font:inherit;cursor:default;pointer-events:none;transform:translateX(calc(-100% - 24px));opacity:0;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .22s ease;overflow:hidden}",
     ".cg-mention-toast.cg-visible{transform:translateX(0);opacity:1}",
     ".cg-mention-toast-title{display:block;font-size:13px;font-weight:750;line-height:1.35;margin:0 0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
     ".cg-mention-toast-message{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;color:#cbd5e1;font-size:12px;line-height:1.45;max-height:52px}",
@@ -56,7 +54,7 @@ function ensureToast() {
   toast.setAttribute("aria-live", "polite");
   toast.setAttribute("aria-label", "Chat mention notification");
   toast.innerHTML = '<span class="cg-mention-toast-title"></span><span class="cg-mention-toast-message"></span>';
-  document.body.appendChild(toast);
+  (document.documentElement || document.body).appendChild(toast);
   return toast;
 }
 function dismissToast() {
@@ -80,7 +78,7 @@ function fillAndShow(el, title, message, targetUrl) {
   if (!canShowToast()) return;
   el.querySelector(".cg-mention-toast-title").textContent = title;
   el.querySelector(".cg-mention-toast-message").textContent = message || "";
-  el.dataset.target = targetUrl;
+  el.dataset.target = targetUrl || "";
   requestAnimationFrame(() => el.classList.add("cg-visible"));
   hideTimer = setTimeout(dismissToast, 6000);
 }
@@ -111,47 +109,106 @@ async function notifyDMMessage(message) {
   if (!canShowToast()) return;
   showMentionToast("@" + sender + " mentioned you in a DM", message.content, chatUrlFor({ dm: message.conversation_id }));
 }
+async function refreshDMMemberships() {
+  const { data, error } = await backend.from("chat_conversation_members")
+    .select("conversation_id").eq("user_id", currentUser.id);
+  if (error) {
+    console.warn("[CG notifications] Could not load DM memberships:", error.message);
+    return;
+  }
+  dmMemberships = new Set((data || []).map(row => row.conversation_id).filter(Boolean));
+}
+function rememberMessage(message) {
+  if (!message?.id || seenMessageIds.has(message.id)) return false;
+  seenMessageIds.add(message.id);
+  if (seenMessageIds.size > 1500) seenMessageIds.delete(seenMessageIds.values().next().value);
+  return true;
+}
+function processNaMessage(message) {
+  if (!rememberMessage(message)) return;
+  notifyNaMessage(message);
+}
+async function processDMMessage(message) {
+  if (!rememberMessage(message)) return;
+  await notifyDMMessage(message);
+}
+async function pollForMentions() {
+  if (pollingBusy || !currentUser?.id || document.visibilityState !== "visible") return;
+  pollingBusy = true;
+  try {
+    const since = pollingStartedAt;
+    const [naResult, dmResult] = await Promise.all([
+      backend.from("messages")
+        .select("id,text,username,userId,role,type,isWhisper,isSystemMessage,server_id,channel_id,timestamp")
+        .eq("server_id", NA_SERVER_ID)
+        .gt("timestamp", since)
+        .order("timestamp", { ascending: true })
+        .limit(100),
+      dmMemberships.size
+        ? backend.from("chat_dm_messages")
+            .select("id,conversation_id,sender_id,content,created_at,deleted_at")
+            .in("conversation_id", Array.from(dmMemberships))
+            .gt("created_at", new Date(since).toISOString())
+            .order("created_at", { ascending: true })
+            .limit(100)
+        : Promise.resolve({ data: [], error: null })
+    ]);
+    if (naResult.error) console.warn("[CG notifications] NA polling error:", naResult.error.message);
+    else (naResult.data || []).forEach(processNaMessage);
+    if (dmResult.error) console.warn("[CG notifications] DM polling error:", dmResult.error.message);
+    else for (const message of (dmResult.data || [])) {
+      if (!message.deleted_at) await processDMMessage(message);
+    }
+    pollingStartedAt = Date.now();
+  } catch (error) {
+    console.warn("[CG notifications] Polling failed:", error);
+  } finally {
+    pollingBusy = false;
+  }
+}
 async function start() {
   const { data: authData, error: authError } = await backend.auth.getUser();
   currentUser = authData?.user || null;
-  if (authError || !currentUser?.id) return;
-  const { data: profile } = await backend.from("users").select("username").eq("id", currentUser.id).maybeSingle();
-  currentUsername = profile?.username || currentUser.user_metadata?.username || "";
-  if (!currentUsername) return;
-
-  if (isChatPage) {
-    const key = "cg-chat-active:" + currentUser.id;
-    const setActive = () => {
-      if (document.visibilityState === "visible") localStorage.setItem(key, String(Date.now()));
-      else localStorage.removeItem(key);
-    };
-    setActive();
-    const heartbeat = setInterval(setActive, 2000);
-    document.addEventListener("visibilitychange", setActive);
-    window.addEventListener("pagehide", () => {
-      clearInterval(heartbeat);
-      localStorage.removeItem(key);
-    }, { once: true });
+  if (authError || !currentUser?.id) {
+    console.warn("[CG notifications] No signed-in user on this game page.", authError?.message || "");
+    return;
+  }
+  const { data: profile, error: profileError } = await backend.from("users").select("username").eq("id", currentUser.id).maybeSingle();
+  currentUsername = profile?.username || currentUser.user_metadata?.username || currentUser.username || "";
+  if (profileError) console.warn("[CG notifications] Profile lookup failed:", profileError.message);
+  if (!currentUsername) {
+    console.warn("[CG notifications] Could not determine the signed-in username.");
+    return;
   }
 
-  const { data: memberships } = await backend.from("chat_conversation_members").select("conversation_id").eq("user_id", currentUser.id);
-  dmMemberships = new Set((memberships || []).map(row => row.conversation_id).filter(Boolean));
+  await refreshDMMemberships();
+  pollingStartedAt = Date.now() - 1500;
 
   activeChannel = backend.channel("mention-notifications:" + currentUser.id)
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, payload => {
-      if (!canShowToast()) return;
-      notifyNaMessage(payload.new);
+      if (document.visibilityState === "visible") processNaMessage(payload.new);
     })
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_dm_messages" }, payload => {
-      if (!canShowToast()) return;
-      notifyDMMessage(payload.new);
+      if (document.visibilityState === "visible") processDMMessage(payload.new);
     })
     .subscribe((status, error) => {
-      if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") console.warn("Mention notifications realtime:", status, error || "");
+      console.info("[CG notifications] Realtime status:", status, error?.message || "");
     });
+
+  // Polling is a fallback for games/browsers where the Realtime WebSocket is blocked.
+  pollForMentions();
+  const pollTimer = setInterval(pollForMentions, 3500);
+  const membershipTimer = setInterval(refreshDMMemberships, 30000);
+  window.addEventListener("pagehide", () => {
+    clearInterval(pollTimer);
+    clearInterval(membershipTimer);
+    if (activeChannel) backend.removeChannel(activeChannel);
+  }, { once: true });
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") dismissToast();
+    else pollForMentions();
   });
+  console.info("[CG notifications] Ready for @" + currentUsername + " on this game page.");
 }
 start().catch(error => console.warn("Mention notifications could not start:", error));
