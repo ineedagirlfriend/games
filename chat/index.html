@@ -3487,6 +3487,29 @@ async function startChat(user) {
     history.replaceState({}, "", location.pathname);
     await loadChatNavigation(user);
   }
+  const notificationParams = new URLSearchParams(location.search);
+  const notificationDMId = notificationParams.get("dm");
+  const notificationChannelId = notificationParams.get("channel");
+  if (notificationDMId) {
+    history.replaceState({}, "", location.pathname);
+    const { data: targetDM } = await backend.from("chat_conversations")
+      .select("id,conversation_type,name,icon_url,created_by,updated_at")
+      .eq("id", notificationDMId).maybeSingle();
+    const { data: targetMembership } = await backend.from("chat_conversation_members")
+      .select("conversation_id").eq("conversation_id", notificationDMId).eq("user_id", user.id).maybeSingle();
+    if (targetDM && targetMembership) await loadDMConversation(targetDM, user);
+    else showLocalSystemMessage("That direct message is no longer available to your account.", true);
+  } else if (notificationChannelId) {
+    history.replaceState({}, "", location.pathname);
+    const { data: targetChannel } = await backend.from("chat_channels")
+      .select("id,server_id").eq("id", notificationChannelId)
+      .eq("server_id", "10000000-0000-4000-8000-000000000001").maybeSingle();
+    if (targetChannel) {
+      activeChatServerId = targetChannel.server_id;
+      activeChatChannelId = targetChannel.id;
+      await switchChatChannel(targetChannel.id, user);
+    } else showLocalSystemMessage("That NA Chat channel is no longer available.", true);
+  }
   listenForNewMessages(user);
   if (!pollExpiryInterval) {
     pollExpiryInterval = setInterval(() => {
@@ -5642,5 +5665,7 @@ document.addEventListener('DOMContentLoaded', () => {
   }, { passive: false });
 });
 </script>
+
+<script type="module" src="../assets/chat-notifications.js"></script>
 </body>
 </html>
