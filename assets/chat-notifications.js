@@ -14,6 +14,7 @@ let dmMemberships = new Set();
 const seenMessageIds = new Set();
 let pollingStartedAt = Date.now() - 1500;
 let pollingBusy = false;
+let realtimeSubscribed = false;
 
 function escapeRegExp(value) {
   return String(value || "").split("").map(char => "\\^$.*+?()[]{}|".includes(char) ? "\\" + char : char).join("");
@@ -137,8 +138,8 @@ async function processDMMessage(message) {
   if (!rememberMessage(message)) return;
   await notifyDMMessage(message);
 }
-async function pollForMentions() {
-  if (pollingBusy || !currentUser?.id || document.visibilityState !== "visible") return;
+async function pollForMentions(force = false) {
+  if (pollingBusy || (!force && realtimeSubscribed) || !currentUser?.id || document.visibilityState !== "visible") return;
   pollingBusy = true;
   try {
     const since = pollingStartedAt;
@@ -172,6 +173,9 @@ async function pollForMentions() {
   }
 }
 async function start() {
+  // The chat page has its own realtime listeners and mention handling. Starting
+  // a second notification client there only duplicates subscriptions/queries.
+  if (isChatPage) return;
   const { data: authData, error: authError } = await backend.auth.getUser();
   currentUser = authData?.user || null;
   if (authError || !currentUser?.id) {
@@ -197,13 +201,18 @@ async function start() {
       if (document.visibilityState === "visible") processDMMessage(payload.new);
     })
     .subscribe((status, error) => {
+      realtimeSubscribed = status === "SUBSCRIBED";
       console.info("[CG notifications] Realtime status:", status, error?.message || "");
+      if (!realtimeSubscribed && document.visibilityState === "visible") pollForMentions(true);
     });
 
-  // Polling is a fallback for games/browsers where the Realtime WebSocket is blocked.
-  pollForMentions();
-  const pollTimer = setInterval(pollForMentions, 3500);
-  const membershipTimer = setInterval(refreshDMMemberships, 30000);
+  // Realtime is the primary delivery path. Poll only as a slower fallback
+  // when the WebSocket is unavailable, rather than querying Supabase every 3.5s.
+  pollForMentions(true);
+  const pollTimer = setInterval(() => {
+    if (!realtimeSubscribed) pollForMentions();
+  }, 15000);
+  const membershipTimer = setInterval(refreshDMMemberships, 60000);
   window.addEventListener("pagehide", () => {
     clearInterval(pollTimer);
     clearInterval(membershipTimer);
@@ -212,7 +221,7 @@ async function start() {
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") dismissToast();
-    else pollForMentions();
+    else pollForMentions(true);
   });
   console.info("[CG notifications] Ready for @" + currentUsername + " on this game page.");
 }
