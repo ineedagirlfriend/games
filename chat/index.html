@@ -3606,6 +3606,11 @@ async function startChat(user) {
     let textToSend = input.value.trim();
     if (!textToSend) return;
 
+    if (containsMassMention(textToSend) && currentUserRole !== "admin" && currentUserRole !== "owner") {
+      showLocalSystemMessage("Only Owners and Admins can use @everyone or @here. You can still mention individual users.", true);
+      return;
+    }
+
     if (currentUserMutedUntil && Date.now() < currentUserMutedUntil) {
       startCooldownTimer(currentUserMutedUntil);
       return;
@@ -5143,6 +5148,10 @@ async function refreshContextMentionUsers(user){
     const {data,error}=await backend.from("users").select("id,username,role,grade,tags").in("id",ids);
     if(error)throw error;contextMentionUsers=data||[];
   }catch(error){console.warn("Context mention lookup failed:",error);contextMentionUsers=currentUser?[{id:currentUser.id,username:currentUsername,role:currentUserRole}]:[];}
+}
+
+function containsMassMention(text) {
+  return /(^|[^A-Za-z0-9_.-])@(everyone|here)(?![A-Za-z0-9_.-])/i.test(String(text || ""));
 }
 
 function getMentionSuggestionItems(searchStr = "") {
