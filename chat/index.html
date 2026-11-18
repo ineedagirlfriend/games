@@ -2121,7 +2121,9 @@ backend.auth.onAuthStateChange(async (event, session, authError) => {
   } else {
     const savedDeviceBan = localStorage.getItem(DEVICE_BAN_STORAGE_KEY) === "true";
     const savedDeviceBanUser = localStorage.getItem("devicebanned_user_id");
-    if (savedDeviceBan && (!savedDeviceBanUser || savedDeviceBanUser !== user.id)) {
+    // A device ban is account-linked. A legacy flag without a user ID is
+    // cleared after the authenticated profile confirms this account is not banned.
+    if (savedDeviceBan && savedDeviceBanUser && savedDeviceBanUser !== user.id) {
       showDeviceBannedScreen();
       return;
     }
@@ -2131,7 +2133,7 @@ backend.auth.onAuthStateChange(async (event, session, authError) => {
       showDeviceBannedScreen();
       return;
     }
-    if (savedDeviceBan && savedDeviceBanUser === user.id) {
+    if (savedDeviceBan && (!savedDeviceBanUser || savedDeviceBanUser === user.id)) {
       localStorage.removeItem(DEVICE_BAN_STORAGE_KEY);
       localStorage.removeItem("devicebanned_user_id");
     }
