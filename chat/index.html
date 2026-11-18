@@ -796,6 +796,11 @@
     .chat-layout.dm-view .channel-sidebar { display:flex !important; width:270px; flex:0 0 270px; }
     .chat-mode-toggle { border:1px solid var(--border); border-radius:10px; padding:9px 14px; min-height:42px; background:var(--card-hover); color:var(--text); font-weight:800; cursor:pointer; }
     .chat-mode-toggle:hover { border-color:var(--accent); }
+
+    .server-rail-btn.dm-has-unread::before{content:"";position:absolute;right:3px;top:3px;width:9px;height:9px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px #080914;z-index:2}
+    .chat-mode-toggle{position:relative;padding-right:28px}
+    .chat-mode-toggle.has-mode-unread::after{content:"";position:absolute;right:10px;top:50%;transform:translateY(-50%);width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 0 2px var(--card-hover)}
+
     @media(max-width:700px){.chat-layout.dm-view .channel-sidebar{width:min(42vw,190px);flex-basis:min(42vw,190px)}.chat-mode-toggle{padding:8px 10px;font-size:12px}}
 
     @media(max-width:700px) { .server-sidebar{width:58px;flex-basis:58px;padding-left:5px;padding-right:5px}.server-rail-btn{width:44px;height:44px;min-height:44px}.channel-sidebar{width:155px;flex-basis:155px}.channel-row{font-size:12px;padding:10px 7px}.chat-header{padding:.8rem}.message-scroller{padding:.9rem} }
@@ -952,6 +957,17 @@ let unreadRefreshInProgress=false;
 let unreadPollInterval=null;
 let contextMentionUsers=[];
 
+function updateChatModeUnreadIndicators(unreadDMs,unreadServers){
+  const dmUnread=!!unreadDMs?.size;
+  const naUnread=!!unreadServers?.has("10000000-0000-4000-8000-000000000001");
+  const dmButton=document.getElementById("open-dms-btn");
+  const modeButton=document.getElementById("chat-mode-toggle");
+  dmButton?.classList.toggle("dm-has-unread",dmUnread&&!isDMView);
+  if(dmButton){dmButton.title=dmUnread&&!isDMView?"Direct messages · Unread":"Direct messages";dmButton.setAttribute("aria-label",dmButton.title);}
+  modeButton?.classList.toggle("has-mode-unread",isDMView?naUnread:dmUnread);
+  if(modeButton){const destination=isDMView?"NA Chat":"Direct Messages";modeButton.setAttribute("aria-label",destination+((isDMView?naUnread:dmUnread)?" · Unread":""));}
+}
+
 async function refreshServerUnreadIndicators(user){
  if(!user?.id||unreadRefreshInProgress)return;
  unreadRefreshInProgress=true;
@@ -963,6 +979,7 @@ async function refreshServerUnreadIndicators(user){
    for(const m of msgs||[]){if(!m.server_id||!m.channel_id)continue;const key="cg-channel-read:"+user.id+":"+m.server_id+":"+m.channel_id;let readAt=Number(localStorage.getItem(key)||0);if(m.server_id===activeChatServerId&&m.channel_id===activeChatChannelId&&!isDMView){readAt=Math.max(readAt,Date.now());localStorage.setItem(key,String(readAt));}if(Number(m.timestamp||0)>readAt)unreadServers.add(m.server_id);}
   }
   if(chatServerRailCache.userId===user.id)chatServerRailCache.unread=unreadServers;
+  updateChatModeUnreadIndicators(new Set(),unreadServers);
   document.querySelectorAll(".server-rail-btn[data-server-id]").forEach(x=>x.classList.toggle("has-unread",unreadServers.has(x.dataset.serverId)));
   const {data:links,error:le}=await backend.from("chat_conversation_members").select("conversation_id,last_read_at").eq("user_id",user.id);if(le)throw le;
   const convos=[...new Set((links||[]).map(x=>x.conversation_id).filter(Boolean))],readAt=new Map((links||[]).map(x=>[x.conversation_id,x.last_read_at?new Date(x.last_read_at).getTime():0])),unreadDMs=new Set();
@@ -971,6 +988,7 @@ async function refreshServerUnreadIndicators(user){
    for(const m of dm||[]){if(m.sender_id===user.id)continue;if(isDMView&&!isServerDMView&&m.conversation_id===activeChatConversationId)continue;if(new Date(m.created_at).getTime()>(readAt.get(m.conversation_id)||0))unreadDMs.add(m.conversation_id);}
   }
   if(activeChatConversationId&&isDMView&&!isServerDMView){await backend.from("chat_conversation_members").update({last_read_at:new Date().toISOString()}).eq("conversation_id",activeChatConversationId).eq("user_id",user.id);unreadDMs.delete(activeChatConversationId);}
+  updateChatModeUnreadIndicators(unreadDMs,unreadServers);
   document.querySelectorAll("#channel-list .channel-row[data-conversation-id]").forEach(row=>{const unread=unreadDMs.has(row.dataset.conversationId);row.classList.toggle("has-unread",unread);let dot=row.querySelector(".unread-dot");if(unread&&!dot){dot=document.createElement("span");dot.className="unread-dot";dot.setAttribute("aria-label","Unread messages");row.appendChild(dot);}else if(!unread)dot?.remove();});
   for(const id of unreadDMs)await addUnreadDMShortcut(id,user);
   document.querySelectorAll(".server-rail-btn.dm-shortcut[data-conversation-id]").forEach(x=>{if(!unreadDMs.has(x.dataset.conversationId))x.remove();});
@@ -1023,6 +1041,7 @@ async function startUnreadRealtime(user){
       if(m.server_id===activeChatServerId&&m.channel_id===activeChatChannelId&&!isDMView){localStorage.setItem("cg-channel-read:"+user.id+":"+m.server_id+":"+m.channel_id,String(Date.now()));return;}
       const button=[...document.querySelectorAll(".server-rail-btn[data-server-id]")].find(b=>b.dataset.serverId===m.server_id);
       button?.classList.add("has-unread");
+       if(isDMView&&m.server_id==="10000000-0000-4000-8000-000000000001")document.getElementById("chat-mode-toggle")?.classList.add("has-mode-unread");
       chatServerRailCache.unread?.add(m.server_id);
     })
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_dm_messages"},async payload=>{
@@ -1033,6 +1052,7 @@ async function startUnreadRealtime(user){
       }
       if(isDMView&&!isServerDMView&&!activeChatConversationId){await showDMList(user);return;}
       await addUnreadDMShortcut(m.conversation_id,user);
+       if(!isDMView){document.getElementById("open-dms-btn")?.classList.add("dm-has-unread");document.getElementById("chat-mode-toggle")?.classList.add("has-mode-unread");}
     })
     .on("postgres_changes",{event:"UPDATE",schema:"public",table:"whispers"},payload=>{
       const m=payload.new;
