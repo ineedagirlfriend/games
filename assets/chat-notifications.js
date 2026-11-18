@@ -43,7 +43,7 @@ function ensureToast() {
   if (toast) return toast;
   const style = document.createElement("style");
   style.textContent = [
-    ".cg-mention-toast{position:fixed;z-index:2147483000;top:max(14px,env(safe-area-inset-top));left:14px;width:min(370px,calc(100vw - 28px));padding:14px 16px;text-align:left;color:#f8fafc;background:linear-gradient(145deg,#24283a,#171a27);border:1px solid rgba(148,163,184,.26);border-radius:13px;box-shadow:0 16px 42px rgba(0,0,0,.42);font:inherit;cursor:pointer;transform:translateX(calc(-100% - 24px));opacity:0;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .22s ease;overflow:hidden}",
+    ".cg-mention-toast{position:fixed;z-index:2147483000;top:max(14px,env(safe-area-inset-top));left:14px;width:min(370px,calc(100vw - 28px));padding:14px 16px;text-align:left;color:#f8fafc;background:rgba(23,26,39,.48);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);border:1px solid rgba(203,213,225,.22);border-radius:13px;box-shadow:0 10px 28px rgba(0,0,0,.16);font:inherit;cursor:default;pointer-events:none;transform:translateX(calc(-100% - 24px));opacity:0;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .22s ease;overflow:hidden}",
     ".cg-mention-toast.cg-visible{transform:translateX(0);opacity:1}",
     ".cg-mention-toast-title{display:block;font-size:13px;font-weight:750;line-height:1.35;margin:0 0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
     ".cg-mention-toast-message{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;overflow-wrap:anywhere;color:#cbd5e1;font-size:12px;line-height:1.45;max-height:52px}",
@@ -57,12 +57,6 @@ function ensureToast() {
   toast.setAttribute("aria-label", "Chat mention notification");
   toast.innerHTML = '<span class="cg-mention-toast-title"></span><span class="cg-mention-toast-message"></span>';
   document.body.appendChild(toast);
-  toast.addEventListener("click", () => {
-    const target = toast?.dataset.target;
-    clearTimeout(hideTimer);
-    toast.classList.remove("cg-visible");
-    if (target) location.href = target;
-  });
   return toast;
 }
 function dismissToast() {
