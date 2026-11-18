@@ -1078,7 +1078,7 @@ async function startUnreadRealtime(user){
     .subscribe((status,error)=>{if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("Unread realtime status:",status,error||"");});
   await refreshServerUnreadIndicators(user);
   if(unreadPollInterval)clearInterval(unreadPollInterval);
-  unreadPollInterval=setInterval(()=>{if(document.visibilityState!=="hidden")refreshServerUnreadIndicators(user);},12000);
+  unreadPollInterval=setInterval(()=>{if(document.visibilityState!=="hidden")refreshServerUnreadIndicators(user);},30000);
   document.addEventListener("visibilitychange",()=>{if(document.visibilityState==="visible")refreshServerUnreadIndicators(user);});
 }
 
