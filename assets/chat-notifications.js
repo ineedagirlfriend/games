@@ -17,7 +17,7 @@ function escapeRegExp(value) {
 }
 function containsMention(content, username) {
   const text = String(content || "");
-  if (!username) return false;
+  if (!username || String(username).toLowerCase() === "here") return false;
   const userPattern = new RegExp("(^|[^A-Za-z0-9_.-])@" + escapeRegExp(username) + "(?![A-Za-z0-9_.-])", "i");
   return userPattern.test(text);
 }
