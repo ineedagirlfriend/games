@@ -39,8 +39,13 @@ function canShowToast() {
 }
 function ensureToast() {
   if (toast) return toast;
+  const fontLink = document.createElement("link");
+  fontLink.rel = "stylesheet";
+  fontLink.href = "https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap";
+  document.head.appendChild(fontLink);
   const style = document.createElement("style");
   style.textContent = [
+    ".cg-mention-toast,.cg-mention-toast *{font-family:'Plus Jakarta Sans',system-ui,sans-serif!important}",
     ".cg-mention-toast{position:fixed;z-index:2147483647!important;isolation:isolate;top:max(14px,env(safe-area-inset-top));left:14px;width:min(370px,calc(100vw - 28px));padding:14px 16px;text-align:left;color:#f8fafc;background:rgba(23,26,39,.48);-webkit-backdrop-filter:blur(3px);backdrop-filter:blur(3px);border:1px solid rgba(203,213,225,.22);border-radius:13px;box-shadow:0 10px 28px rgba(0,0,0,.16);font:inherit;cursor:default;pointer-events:none;transform:translateX(calc(-100% - 24px));opacity:0;transition:transform .28s cubic-bezier(.2,.8,.2,1),opacity .22s ease;overflow:hidden}",
     ".cg-mention-toast.cg-visible{transform:translateX(0);opacity:1}",
     ".cg-mention-toast-title{display:block;font-size:13px;font-weight:750;line-height:1.35;margin:0 0 5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}",
