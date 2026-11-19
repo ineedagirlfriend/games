@@ -191,7 +191,59 @@
       }
       setViewerCount();
     }
-    function setStreamerAvatar(url, username) {\n      const avatar = $("streamer-avatar");\n      avatar.textContent = "";\n      avatar.style.background = "linear-gradient(135deg,#2563eb,#7c3aed)";\n      const img = document.createElement("img");\n      img.src = url; img.alt = (username || "Streamer") + " profile picture";\n      img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%";\n      img.onerror = () => { avatar.textContent = (username || "S").slice(0,1).toUpperCase(); };\n      avatar.replaceChildren(img);\n    }\n    async function loadAvatarForUser(userId) {\n      if (!userId) return null;\n      if (avatarUrlCache.has(userId)) return avatarUrlCache.get(userId);\n      try {\n        const { data, error } = await backend.storage.from("chat-files").list("avatars", { limit:1000, sortBy:{column:"name",order:"desc"} });\n        if (error || !data) return null;\n        const files = data.filter(item => item.name && item.name.startsWith(userId + "__"));\n        files.sort((a,b) => Number((b.name.match(/__(\\d+)\\./) || [])[1] || 0) - Number((a.name.match(/__(\\d+)\\./) || [])[1] || 0));\n        if (!files.length) return null;\n        const url = backend.storage.from("chat-files").getPublicUrl("avatars/" + files[0].name).data.publicUrl;\n        avatarUrlCache.set(userId,url);\n        return url;\n      } catch (_) { return null; }\n    }\n    function renderStreamerTags(host) {\n      const root = $("streamer-tags"); root.replaceChildren();\n      const roleTag = document.createElement("span"); roleTag.className = "profile-tag"; roleTag.textContent = String(host?.role || "streamer").toUpperCase(); root.appendChild(roleTag);\n      const tags = Array.isArray(host?.tags) ? host.tags : [];\n      tags.forEach(item => {\n        const tag = document.createElement("span"); tag.className = "profile-tag";\n        const label = typeof item === "string" ? item : (item.label || item.name || "Tag");\n        tag.textContent = String(label);\n        const color = typeof item === "object" && /^#[0-9a-f]{6}$/i.test(String(item.color || "")) ? item.color : "";\n        if (color) { tag.style.color = color; tag.style.border = "1px solid " + color + "55"; }\n        root.appendChild(tag);\n      });\n      if (host?.grade) { const grade = document.createElement("span"); grade.className = "profile-tag"; grade.textContent = String(host.grade).toUpperCase() + " GRADE"; root.appendChild(grade); }\n    }\n    function canStream() {
+    function setStreamerAvatar(url, username) {
+      const avatar = $("streamer-avatar");
+      avatar.textContent = "";
+      avatar.style.background = "linear-gradient(135deg,#2563eb,#7c3aed)";
+      const img = document.createElement("img");
+      img.src = url;
+      img.alt = (username || "Streamer") + " profile picture";
+      img.style.cssText = "width:100%;height:100%;object-fit:cover;border-radius:50%";
+      img.onerror = () => { avatar.textContent = (username || "S").slice(0,1).toUpperCase(); };
+      avatar.replaceChildren(img);
+    }
+    async function loadAvatarForUser(userId) {
+      if (!userId) return null;
+      if (avatarUrlCache.has(userId)) return avatarUrlCache.get(userId);
+      try {
+        const { data, error } = await backend.storage.from("chat-files").list("avatars", { limit:1000, sortBy:{column:"name",order:"desc"} });
+        if (error || !data) return null;
+        const files = data.filter(item => item.name && item.name.startsWith(userId + "__"));
+        files.sort((a,b) => Number((b.name.match(/__(\d+)\./) || [])[1] || 0) - Number((a.name.match(/__(\d+)\./) || [])[1] || 0));
+        if (!files.length) return null;
+        const url = backend.storage.from("chat-files").getPublicUrl("avatars/" + files[0].name).data.publicUrl;
+        avatarUrlCache.set(userId,url);
+        return url;
+      } catch (_) { return null; }
+    }
+    function renderStreamerTags(host) {
+      const root = $("streamer-tags");
+      root.replaceChildren();
+      const roleTag = document.createElement("span");
+      roleTag.className = "profile-tag";
+      roleTag.textContent = String(host?.role || "streamer").toUpperCase();
+      root.appendChild(roleTag);
+      const tags = Array.isArray(host?.tags) ? host.tags : [];
+      tags.forEach(item => {
+        const tag = document.createElement("span");
+        tag.className = "profile-tag";
+        const label = typeof item === "string" ? item : (item.label || item.name || "Tag");
+        tag.textContent = String(label);
+        const color = typeof item === "object" && /^#[0-9a-f]{6}$/i.test(String(item.color || "")) ? item.color : "";
+        if (color) {
+          tag.style.color = color;
+          tag.style.border = "1px solid " + color + "55";
+        }
+        root.appendChild(tag);
+      });
+      if (host?.grade) {
+        const grade = document.createElement("span");
+        grade.className = "profile-tag";
+        grade.textContent = String(host.grade).toUpperCase() + " GRADE";
+        root.appendChild(grade);
+      }
+    }
+    function canStream() {
       return role === "admin" || role === "owner" || role === "streamer";
     }
     function escapeHtml(value) {
