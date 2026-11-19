@@ -331,12 +331,18 @@
         } else if (payload.type === "answer" && payload.to === clientId) {
           const pc = hostPeerConnections.get(payload.from);
           if (pc && payload.description) {
-            try {\n              await pc.setRemoteDescription(payload.description);\n              const queued = hostPendingIce.get(payload.from) || [];\n              hostPendingIce.delete(payload.from);\n              for (const candidate of queued) await pc.addIceCandidate(candidate);\n            } catch (error) { console.warn("Could not set viewer answer", error); }
+            try {
+              await pc.setRemoteDescription(payload.description);
+              const queued = hostPendingIce.get(payload.from) || [];
+              hostPendingIce.delete(payload.from);
+              for (const candidate of queued) await pc.addIceCandidate(candidate);
+            } catch (error) { console.warn("Could not set viewer answer", error); }
           }
         } else if (payload.type === "ice" && payload.to === clientId && payload.candidate) {
           const pc = hostPeerConnections.get(payload.from);
           if (pc) {
-            if (!pc.remoteDescription) hostPendingIce.get(payload.from)?.push(payload.candidate);\n            else { try { await pc.addIceCandidate(payload.candidate); } catch (error) { console.warn("Could not add viewer ICE", error); } }
+            if (!pc.remoteDescription) hostPendingIce.get(payload.from)?.push(payload.candidate);
+            else { try { await pc.addIceCandidate(payload.candidate); } catch (error) { console.warn("Could not add viewer ICE", error); } }
           }
         } else if (payload.type === "leave" && payload.viewerId) {
           const pc = hostPeerConnections.get(payload.viewerId);
