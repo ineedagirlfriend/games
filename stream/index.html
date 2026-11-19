@@ -220,7 +220,7 @@
       const root = $("streamer-tags");
       root.replaceChildren();
       const roleTag = document.createElement("span");
-      roleTag.className = "profile-tag";
+      roleTag.className = host?.role === "streamer" ? "streamer-role" : "profile-tag";
       roleTag.textContent = String(host?.role || "streamer").toUpperCase();
       root.appendChild(roleTag);
       const tags = Array.isArray(host?.tags) ? host.tags : [];
@@ -370,7 +370,7 @@
       if (!liveChannel) return;
       const host = findHost();
       if (isHost) {
-        updateHostUI({ streamId:activeStreamId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:"streamer" });
+        updateHostUI({ streamId:activeStreamId, streamerId:user?.id, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
       } else if (host) {
         const changed = activeStreamId !== host.streamId;
         updateHostUI(host);
@@ -478,7 +478,9 @@
         setStatus("Sign in to watch the live stream and use chat.", true);
       }
 
-      liveChannel = backend.channel("nagames-live-stream", { config:{ presence:{ key:clientId } } });
+      if (!user) return;
+      if (backend.realtime?.setAuth) await backend.realtime.setAuth();
+      liveChannel = backend.channel("nagames-live-stream", { config:{ private:true, presence:{ key:clientId } } });
       liveChannel
         .on("presence", { event:"sync" }, () => { syncPresence().catch(error => console.warn("Presence sync failed",error)); })
         .on("presence", { event:"join" }, () => { syncPresence().catch(error => console.warn("Presence join failed",error)); })
