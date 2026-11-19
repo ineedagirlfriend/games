@@ -164,15 +164,14 @@
       });
       $("viewer-counter").textContent = count + (count === 1 ? " viewer" : " viewers");
     }
-    function findHost() {
-      if (!hostChannel) return null;
+    function findHosts() {
+      if (!hostChannel) return [];
       const state = hostChannel.presenceState();
-      for (const entries of Object.values(state)) {
-        for (const entry of entries) {
-          if (entry.kind === "streamer" && entry.streamId) return entry;
-        }
-      }
-      return null;
+      return Object.values(state).flat().filter(entry => entry.kind === "streamer" && entry.streamId)
+        .sort((a,b) => String(a.clientId || "").localeCompare(String(b.clientId || "")));
+    }
+    function findHost() {
+      return findHosts()[0] || null;
     }
     function updateHostUI(host) {
       activeHost = host;
@@ -388,9 +387,15 @@
     }
     async function syncPresence() {
       if (!hostChannel || !realtimeReady) return;
-      const host = findHost();
+      const hosts = findHosts();
+      const host = hosts[0] || null;
       if (isHost) {
-        updateHostUI({ streamId:activeStreamId, streamerId:user?.id, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
+        if (host && host.clientId !== clientId) {
+          setStatus("Another streamer went live at the same time. Your stream was stopped.", true);
+          await endStream();
+          return;
+        }
+        updateHostUI({ streamId:activeStreamId, streamerId:user?.id, clientId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
       } else if (host) {
         const changed = activeStreamId !== host.streamId;
         updateHostUI(host);
