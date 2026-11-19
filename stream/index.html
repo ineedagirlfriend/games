@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Live Stream | NAGames</title>
+  <script src="../assets/theme-loader.js"></script>
+  <link rel="stylesheet" href="../style.css">
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
+  <style>
+    body { min-height:100vh; }
+    .stream-page { width:min(1500px,100%); margin:0 auto; padding:28px 24px 50px; flex:1; }
+    .stream-heading { display:flex;align-items:center;justify-content:space-between;gap:16px;margin:10px 0 22px; }
+    .stream-heading h1 { font:800 clamp(1.7rem,3vw,2.5rem)/1.1 var(--font-display);letter-spacing:-.04em; }
+    .stream-heading p { color:var(--text-muted);margin-top:7px;font-size:.92rem; }
+    .live-layout { display:grid;grid-template-columns:minmax(0,1.65fr) minmax(310px,.9fr);gap:20px;align-items:stretch;min-height:660px; }
+    .stream-column,.stream-chat-panel { min-width:0;background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.18); }
+    .video-shell { position:relative;width:100%;aspect-ratio:16/9;background:#020308;display:grid;place-items:center;overflow:hidden; }
+    #stream-video { width:100%;height:100%;object-fit:contain;background:#020308; }
+    .video-empty { position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:24px;color:#94a3b8;gap:12px; }
+    .video-empty-icon { width:66px;height:66px;border-radius:20px;background:#101321;border:1px solid #24283b;display:grid;place-items:center;font-size:27px;color:#a5b4fc; }
+    .video-empty strong { color:#e2e8f0;font:800 1.15rem var(--font-display); }
+    .live-indicator { position:absolute;top:14px;left:14px;display:none;align-items:center;gap:7px;padding:6px 10px;border-radius:7px;background:rgba(220,38,38,.92);color:white;font-size:.72rem;font-weight:900;letter-spacing:.06em; }
+    .live-indicator.active { display:flex; }
+    .live-dot { width:7px;height:7px;border-radius:50%;background:white;box-shadow:0 0 10px white; }
+    .viewer-counter { position:absolute;top:14px;right:14px;padding:7px 10px;border-radius:8px;background:rgba(8,10,18,.8);color:#e2e8f0;font-size:.78rem;font-weight:800;backdrop-filter:blur(10px); }
+    .stream-details { padding:20px 22px 18px; }
+    .stream-title { font:800 clamp(1.2rem,2.2vw,1.65rem)/1.25 var(--font-display);color:var(--text);overflow-wrap:anywhere; }
+    .streamer-row { display:flex;align-items:center;gap:12px;margin-top:15px; }
+    .streamer-avatar { width:44px;height:44px;border-radius:50%;display:grid;place-items:center;flex:0 0 44px;background:linear-gradient(135deg,#2563eb,#7c3aed);color:white;font:900 1rem var(--font-display);overflow:hidden; }
+    .streamer-name { font-weight:800;color:var(--text); }
+    .streamer-subtitle { color:var(--text-muted);font-size:.78rem;margin-top:3px; }
+    .streamer-role { display:inline-flex;margin-left:7px;padding:3px 7px;border-radius:5px;background:rgba(56,189,248,.14);border:1px solid rgba(56,189,248,.28);color:#7dd3fc;font-size:.62rem;font-weight:900;vertical-align:middle; }
+    .profile-tags { display:flex;flex-wrap:wrap;gap:5px;margin-top:7px; }
+    .profile-tag { padding:3px 7px;border-radius:5px;background:rgba(148,163,184,.12);color:#cbd5e1;font-size:.65rem;font-weight:800; }
+    .stream-controls { padding:0 22px 22px;display:flex;flex-wrap:wrap;gap:10px; }
+    .stream-controls button { min-height:46px;flex:1 1 145px;border:1px solid rgba(108,99,255,.35);border-radius:10px;background:rgba(108,99,255,.13);color:#e0e7ff;font:800 .84rem var(--font);cursor:pointer;padding:11px 14px;transition:background .18s,border-color .18s; }
+    .stream-controls button:disabled { opacity:.45;cursor:not-allowed; }
+    .stream-controls button:not(:disabled):hover { background:rgba(108,99,255,.24);border-color:var(--accent); }
+    .stream-controls .end-stream { background:rgba(220,38,38,.15);border-color:rgba(239,68,68,.4);color:#fecaca; }
+    .stream-title-input { width:100%;margin:0 22px 14px;padding:12px 14px;border:1px solid var(--border);border-radius:9px;background:var(--surface);color:var(--text);font:600 .9rem var(--font);outline:none; }
+    .stream-title-input:focus { border-color:var(--accent); }
+    .stream-status { min-height:20px;padding:0 22px 16px;color:var(--text-muted);font-size:.78rem; }
+    .stream-chat-panel { display:flex;flex-direction:column;min-height:0; }
+    .chat-panel-heading { height:58px;flex:0 0 58px;display:flex;align-items:center;justify-content:space-between;padding:0 18px;border-bottom:1px solid var(--border);font:800 1rem var(--font-display); }
+    .chat-panel-heading span:last-child { color:var(--text-muted);font:700 .72rem var(--font); }
+    .stream-chat-frame { width:100%;height:100%;min-height:600px;flex:1;border:0;background:var(--bg); }
+    .stream-notice { margin-top:16px;padding:12px 15px;border:1px solid var(--border);border-radius:10px;color:var(--text-muted);font-size:.78rem;line-height:1.5; }
+    @media(max-width:900px) { .live-layout{grid-template-columns:1fr;min-height:0}.stream-chat-panel{height:560px}.stream-chat-frame{min-height:0}.stream-page{padding:20px 14px 35px} }
+    @media(max-width:520px) { header{padding:12px 14px}.nav-container{gap:10px}.nav-container nav ul{gap:4px;flex-wrap:wrap;justify-content:flex-end}.nav-container nav a{font-size:.75rem;padding:7px 8px}.stream-heading{align-items:flex-start;flex-direction:column}.stream-details{padding:17px}.stream-controls{padding:0 17px 17px}.stream-title-input{margin:0 17px 12px;width:calc(100% - 34px)}.stream-status{padding:0 17px 14px} }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="nav-container">
+      <a href="../" class="logo">NAGames</a>
+      <nav>
+        <ul>
+          <li><a href="../">Home</a></li>
+          <li><a href="../games/">Games</a></li>
+          <li><a href="../omoggle/">Omoggle</a></li>
+          <li><a href="../chat/">Chat</a></li>
+          <li><a href="../settings/">Settings</a></li>
+          <li id="auth-button-container"></li>
+        </ul>
+      </nav>
+    </div>
+  </header>
+
+  <main class="stream-page">
+    <div class="stream-heading">
+      <div><h1>Live Stream</h1><p>Watch the current NAGames live stream and chat in its own room.</p></div>
+      <div id="connection-label" style="color:var(--text-muted);font-size:.78rem;font-weight:700">Connecting…</div>
+    </div>
+
+    <div class="live-layout">
+      <section class="stream-column">
+        <div class="video-shell">
+          <video id="stream-video" autoplay playsinline controls></video>
+          <div class="video-empty" id="video-empty">
+            <div class="video-empty-icon">▶</div>
+            <strong>Nobody is streaming right now</strong>
+            <span>When someone goes live, the stream will appear here.</span>
+          </div>
+          <div class="live-indicator" id="live-indicator"><span class="live-dot"></span> LIVE</div>
+          <div class="viewer-counter" id="viewer-counter">0 viewers</div>
+        </div>
+
+        <div class="stream-details">
+          <div class="stream-title" id="stream-title">No active stream</div>
+          <div class="streamer-row">
+            <div class="streamer-avatar" id="streamer-avatar">N</div>
+            <div>
+              <div class="streamer-name" id="streamer-name">NAGames</div>
+              <div class="streamer-subtitle" id="streamer-subtitle">Waiting for a streamer</div>
+              <div class="profile-tags" id="streamer-tags"></div>
+            </div>
+          </div>
+        </div>
+
+        <input id="stream-title-input" class="stream-title-input" maxlength="100" placeholder="Stream title (optional)" value="Live on NAGames" hidden>
+        <div class="stream-controls" id="stream-controls" hidden>
+          <button id="front-camera-btn" type="button">Stream front camera</button>
+          <button id="back-camera-btn" type="button">Stream back camera</button>
+          <button id="screen-share-btn" type="button">Stream screen</button>
+        </div>
+        <div class="stream-controls" id="end-controls" hidden>
+          <button id="end-stream-btn" class="end-stream" type="button">End stream</button>
+        </div>
+        <div class="stream-status" id="stream-status" role="status"></div>
+      </section>
+
+      <aside class="stream-chat-panel">
+        <div class="chat-panel-heading"><span>Live Chat</span><span>Separate stream room</span></div>
+        <iframe class="stream-chat-frame" title="Live stream chat" src="../chat/?channel=10000000-0000-4000-8000-000000000004&amp;embed=stream"></iframe>
+      </aside>
+    </div>
+
+    <div class="stream-notice">Video is sent directly between viewers and the streamer using WebRTC. It is not uploaded or saved. Camera and screen sharing may pause if your browser backgrounds the page or locks the device.</div>
+  </main>
+
+  <script type="module">
+    import { createClient } from "../assets/backend-client.js";
+    const backend = createClient();
+    const $ = id => document.getElementById(id);
+    const clientId = crypto.randomUUID ? crypto.randomUUID() : "client-" + Date.now() + "-" + Math.random().toString(36).slice(2);
+    const rtcConfig = { iceServers: [{ urls: "stun:stun.l.google.com:19302" }] };
+
+    let user = null;
+    let profile = null;
+    let role = "user";
+    let liveChannel = null;
+    let localStream = null;
+    let activeHost = null;
+    let hostPeerConnections = new Map();
+    let viewerPeerConnection = null;
+    let pendingIce = [];
+    let isHost = false;
+    let activeStreamId = null;
+    let remoteStream = null;
+    let profileTags = [];
+
+    function setStatus(message, error) {
+      $("stream-status").textContent = message || "";
+      $("stream-status").style.color = error ? "#fca5a5" : "var(--text-muted)";
+    }
+    function setConnection(message, error) {
+      $("connection-label").textContent = message;
+      $("connection-label").style.color = error ? "#fca5a5" : "var(--text-muted)";
+    }
+    function setViewerCount() {
+      if (!liveChannel) return;
+      const state = liveChannel.presenceState();
+      let count = 0;
+      Object.values(state).flat().forEach(item => {
+        if (item.kind === "viewer" && item.streamId === activeStreamId) count++;
+      });
+      $("viewer-counter").textContent = count + (count === 1 ? " viewer" : " viewers");
+    }
+    function findHost() {
+      if (!liveChannel) return null;
+      const state = liveChannel.presenceState();
+      for (const entries of Object.values(state)) {
+        for (const entry of entries) {
+          if (entry.kind === "streamer" && entry.streamId) return entry;
+        }
+      }
+      return null;
+    }
+    function updateHostUI(host) {
+      activeHost = host;
+      activeStreamId = host?.streamId || null;
+      $("video-empty").style.display = host ? "none" : "flex";
+      $("live-indicator").classList.toggle("active", !!host);
+      $("stream-title").textContent = host?.title || "No active stream";
+      $("streamer-name").textContent = host?.username || "NAGames";
+      $("streamer-subtitle").textContent = host ? "Streaming now" : "Waiting for a streamer";
+      $("streamer-avatar").textContent = (host?.username || "N").slice(0,1).toUpperCase();
+      $("streamer-tags").innerHTML = host?.role ? '<span class="profile-tag">' + escapeHtml(host.role.toUpperCase()) + '</span>' : "";
+      $("stream-controls").hidden = !!host || !canStream();
+      $("stream-title-input").hidden = !!host || !canStream();
+      $("end-controls").hidden = !(isHost && !!host);
+      if (!host) {
+        $("stream-video").srcObject = null;
+        $("viewer-counter").textContent = "0 viewers";
+      }
+      setViewerCount();
+    }
+    function canStream() {
+      return role === "admin" || role === "owner" || role === "streamer";
+    }
+    function escapeHtml(value) {
+      return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
+    }
+    function sendSignal(payload) {
+      if (!liveChannel) return Promise.resolve();
+      return liveChannel.send({ type:"broadcast", event:"signal", payload:Object.assign({ streamId:activeStreamId, from:clientId }, payload) });
+    }
+    function closeViewerConnection() {
+      if (viewerPeerConnection) {
+        try { viewerPeerConnection.close(); } catch (_) {}
+        viewerPeerConnection = null;
+      }
+      pendingIce = [];
+      remoteStream = null;
+      $("stream-video").srcObject = null;
+    }
+    function closeHostConnections() {
+      hostPeerConnections.forEach(pc => { try { pc.close(); } catch (_) {} });
+      hostPeerConnections.clear();
+    }
+    async function addQueuedIce(pc) {
+      if (!pc.remoteDescription) return;
+      const queued = pendingIce;
+      pendingIce = [];
+      for (const candidate of queued) {
+        try { await pc.addIceCandidate(candidate); } catch (error) { console.warn("Could not add queued ICE candidate", error); }
+      }
+    }
+    async function createHostPeer(viewerId) {
+      if (!localStream || hostPeerConnections.has(viewerId)) return;
+      const pc = new RTCPeerConnection(rtcConfig);
+      hostPeerConnections.set(viewerId, pc);
+      localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+      pc.onicecandidate = event => {
+        if (event.candidate) sendSignal({ type:"ice", to:viewerId, candidate:event.candidate });
+      };
+      pc.onconnectionstatechange = () => {
+        if (["failed","closed","disconnected"].includes(pc.connectionState)) {
+          if (pc.connectionState !== "disconnected") {
+            pc.close();
+            hostPeerConnections.delete(viewerId);
+          }
+        }
+      };
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await sendSignal({ type:"offer", to:viewerId, description:pc.localDescription });
+    }
+    async function createViewerPeer(hostClientId) {
+      closeViewerConnection();
+      const pc = new RTCPeerConnection(rtcConfig);
+      viewerPeerConnection = pc;
+      pc.ontrack = event => {
+        remoteStream = event.streams[0] || remoteStream;
+        if (!remoteStream) {
+          remoteStream = new MediaStream();
+          remoteStream.addTrack(event.track);
+        }
+        $("stream-video").srcObject = remoteStream;
+        $("stream-video").muted = false;
+        $("stream-video").play().catch(() => {});
+        $("video-empty").style.display = "none";
+      };
+      pc.onicecandidate = event => {
+        if (event.candidate) sendSignal({ type:"ice", to:hostClientId, candidate:event.candidate });
+      };
+      pc.onconnectionstatechange = () => {
+        if (pc.connectionState === "failed") setStatus("The video connection failed. Try refreshing the page.", true);
+      };
+      return pc;
+    }
+    async function handleSignal(payload) {
+      if (!payload || payload.streamId !== activeStreamId) return;
+      if (isHost) {
+        if (payload.type === "join" && payload.viewerId && payload.viewerId !== clientId) {
+          await createHostPeer(payload.viewerId);
+        } else if (payload.type === "answer" && payload.to === clientId) {
+          const pc = hostPeerConnections.get(payload.from);
+          if (pc && payload.description) {
+            try { await pc.setRemoteDescription(payload.description); } catch (error) { console.warn("Could not set viewer answer", error); }
+          }
+        } else if (payload.type === "ice" && payload.to === clientId && payload.candidate) {
+          const pc = hostPeerConnections.get(payload.from);
+          if (pc) {
+            try { await pc.addIceCandidate(payload.candidate); } catch (error) { console.warn("Could not add viewer ICE", error); }
+          }
+        } else if (payload.type === "leave" && payload.viewerId) {
+          const pc = hostPeerConnections.get(payload.viewerId);
+          if (pc) pc.close();
+          hostPeerConnections.delete(payload.viewerId);
+        }
+        return;
+      }
+      if (payload.to !== clientId) return;
+      if (payload.type === "offer" && payload.description) {
+        const pc = await createViewerPeer(payload.from);
+        await pc.setRemoteDescription(payload.description);
+        await addQueuedIce(pc);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await sendSignal({ type:"answer", to:payload.from, description:pc.localDescription });
+      } else if (payload.type === "ice" && payload.candidate) {
+        if (!viewerPeerConnection || !viewerPeerConnection.remoteDescription) pendingIce.push(payload.candidate);
+        else {
+          try { await viewerPeerConnection.addIceCandidate(payload.candidate); } catch (error) { console.warn("Could not add host ICE", error); }
+        }
+      } else if (payload.type === "ended") {
+        closeViewerConnection();
+        updateHostUI(null);
+        setStatus("The streamer ended the stream.");
+      }
+    }
+    async function startViewer(host) {
+      if (!host || isHost || activeStreamId !== host.streamId) return;
+      closeViewerConnection();
+      await liveChannel.track({ kind:"viewer", streamId:host.streamId, userId:user?.id || null, clientId });
+      await sendSignal({ type:"join", to:host.clientId, viewerId:clientId, viewerUserId:user?.id || null });
+      setStatus("Connecting to " + host.username + "'s stream…");
+      setViewerCount();
+    }
+    async function syncPresence() {
+      if (!liveChannel) return;
+      const host = findHost();
+      if (isHost) {
+        updateHostUI({ streamId:activeStreamId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:"streamer" });
+      } else if (host) {
+        const changed = activeStreamId !== host.streamId;
+        updateHostUI(host);
+        if (changed || !viewerPeerConnection) await startViewer(host);
+      } else {
+        if (activeStreamId) {
+          closeViewerConnection();
+          activeStreamId = null;
+          activeHost = null;
+        }
+        updateHostUI(null);
+        if (canStream()) setStatus("You're allowed to stream. Start when you're ready.");
+      }
+      setViewerCount();
+    }
+    async function startStream(source) {
+      if (!canStream() || isHost || !liveChannel) return;
+      const existing = findHost();
+      if (existing) {
+        setStatus("Someone is already streaming. Only one stream can be live at a time.", true);
+        return;
+      }
+      try {
+        if (source === "screen") {
+          if (!navigator.mediaDevices?.getDisplayMedia) throw new Error("Screen sharing is not supported by this browser.");
+          localStream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:{ ideal:30, max:60 } }, audio:false });
+        } else {
+          if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access is not supported by this browser.");
+          const facingMode = source === "back" ? "environment" : "user";
+          try {
+            localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ exact:facingMode }, width:{ ideal:1920 }, height:{ ideal:1080 }, frameRate:{ ideal:30, max:60 } }, audio:false });
+          } catch (_) {
+            localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:facingMode }, width:{ ideal:1920 }, height:{ ideal:1080 } }, audio:false });
+          }
+        }
+        activeStreamId = crypto.randomUUID ? crypto.randomUUID() : "stream-" + Date.now();
+        isHost = true;
+        $("stream-video").srcObject = localStream;
+        $("stream-video").muted = true;
+        $("stream-video").play().catch(() => {});
+        $("video-empty").style.display = "none";
+        $("live-indicator").classList.add("active");
+        $("stream-title").textContent = ($("stream-title-input").value || "Live on NAGames").trim();
+        $("streamer-name").textContent = profile?.username || "Streamer";
+        $("streamer-subtitle").textContent = "Streaming now";
+        $("streamer-avatar").textContent = (profile?.username || "S").slice(0,1).toUpperCase();
+        $("streamer-tags").innerHTML = '<span class="streamer-role">STREAMER</span>';
+        $("stream-controls").hidden = true;
+        $("stream-title-input").hidden = true;
+        $("end-controls").hidden = false;
+        await liveChannel.track({ kind:"streamer", streamId:activeStreamId, streamerId:user.id, clientId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role });
+        localStream.getVideoTracks()[0].addEventListener("ended", () => { if (isHost) endStream(); });
+        setStatus("You're live. Keep this page open while streaming.");
+        setViewerCount();
+      } catch (error) {
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        localStream = null;
+        isHost = false;
+        setStatus(error.message || "Could not start the stream.", true);
+      }
+    }
+    async function endStream() {
+      if (!isHost) return;
+      await sendSignal({ type:"ended" });
+      closeHostConnections();
+      if (localStream) localStream.getTracks().forEach(track => track.stop());
+      localStream = null;
+      isHost = false;
+      await liveChannel.untrack();
+      $("stream-video").srcObject = null;
+      $("live-indicator").classList.remove("active");
+      $("end-controls").hidden = true;
+      $("video-empty").style.display = "flex";
+      $("stream-title").textContent = "No active stream";
+      $("streamer-name").textContent = "NAGames";
+      $("streamer-subtitle").textContent = "Waiting for a streamer";
+      $("streamer-avatar").textContent = "N";
+      $("streamer-tags").innerHTML = "";
+      activeStreamId = null;
+      updateHostUI(null);
+      setStatus("Stream ended.");
+    }
+
+    async function initialize() {
+      const authResult = await backend.auth.getUser();
+      user = authResult.data?.user || null;
+      if (user) {
+        const result = await backend.from("users").select("username,role,grade,tags").eq("id",user.id).maybeSingle();
+        profile = result.data || { username:user.email?.split("@")[0] || "User", role:"user", tags:[] };
+        role = String(profile.role || "user").toLowerCase();
+        profileTags = Array.isArray(profile.tags) ? profile.tags : [];
+        $("auth-button-container").innerHTML = '<a class="nav-auth-btn" href="../settings/">Account</a>';
+        $("streamer-name").textContent = profile.username || "User";
+        $("streamer-avatar").textContent = (profile.username || "U").slice(0,1).toUpperCase();
+        if (canStream()) {
+          $("stream-controls").hidden = false;
+          $("stream-title-input").hidden = false;
+          setStatus("You're allowed to stream. Choose a camera or screen.");
+        } else {
+          $("stream-controls").hidden = true;
+          $("stream-title-input").hidden = true;
+        }
+      } else {
+        $("auth-button-container").innerHTML = '<a class="nav-auth-btn" href="../login/">Sign In</a>';
+        setStatus("Sign in to watch the live stream and use chat.", true);
+      }
+
+      liveChannel = backend.channel("nagames-live-stream", { config:{ presence:{ key:clientId } } });
+      liveChannel
+        .on("presence", { event:"sync" }, () => { syncPresence().catch(error => console.warn("Presence sync failed",error)); })
+        .on("presence", { event:"join" }, () => { syncPresence().catch(error => console.warn("Presence join failed",error)); })
+        .on("presence", { event:"leave" }, () => { syncPresence().catch(error => console.warn("Presence leave failed",error)); })
+        .on("broadcast", { event:"signal" }, ({payload}) => { handleSignal(payload).catch(error => console.warn("Stream signaling failed",error)); })
+        .subscribe(status => {
+          if (status === "SUBSCRIBED") {
+            setConnection("Connected");
+            syncPresence().catch(error => console.warn("Initial stream sync failed",error));
+          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+            setConnection("Connection problem",true);
+          } else {
+            setConnection(status);
+          }
+        });
+
+      $("front-camera-btn").addEventListener("click", () => startStream("front"));
+      $("back-camera-btn").addEventListener("click", () => startStream("back"));
+      $("screen-share-btn").addEventListener("click", () => startStream("screen"));
+      $("end-stream-btn").addEventListener("click", endStream);
+      window.addEventListener("beforeunload", () => {
+        if (localStream) localStream.getTracks().forEach(track => track.stop());
+        closeHostConnections();
+        closeViewerConnection();
+        try { liveChannel?.untrack(); } catch (_) {}
+      });
+    }
+    initialize().catch(error => {
+      console.error("Stream page initialization failed:",error);
+      setConnection("Could not connect",true);
+      setStatus(error.message || "Could not initialize streaming.",true);
+    });
+  </script>
+</body>
+</html>
