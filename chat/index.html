@@ -1644,7 +1644,7 @@ async function createChatChannel(user){
     topic:topic.trim(),channel_type:"text",position:activeChatChannels.length,is_private:isPrivate,slowmode_seconds:slow
   }).select("id").single();
   if(error){
-    if(error.code==="42501"&&activeChatServer?.is_system&&(currentUserRole!=="admin"&&currentUserRole!=="owner")){
+    if(error.code==="42501"&&activeChatServer?.is_system&&(currentUserRole!=="admin"&&currentUserRole!=="owner"&&currentUserRole!=="streamer")){
       uiAlert("Only NA chat staff can create channels in the global NA server. You can create channels freely in servers you own.");
     }else{
       uiAlert("Could not create channel: "+error.message);
