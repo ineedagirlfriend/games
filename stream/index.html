@@ -134,6 +134,7 @@
     let localStream = null;
     let activeHost = null;
     let hostPeerConnections = new Map();
+    let hostPendingIce = new Map();
     let viewerPeerConnection = null;
     let pendingIce = [];
     let isHost = false;
@@ -265,6 +266,7 @@
     function closeHostConnections() {
       hostPeerConnections.forEach(pc => { try { pc.close(); } catch (_) {} });
       hostPeerConnections.clear();
+      hostPendingIce.clear();
     }
     async function addQueuedIce(pc) {
       if (!pc.remoteDescription) return;
@@ -276,6 +278,7 @@
     }
     async function createHostPeer(viewerId) {
       if (!localStream || hostPeerConnections.has(viewerId)) return;
+      hostPendingIce.set(viewerId, []);
       const pc = new RTCPeerConnection(rtcConfig);
       hostPeerConnections.set(viewerId, pc);
       localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
@@ -287,6 +290,7 @@
           if (pc.connectionState !== "disconnected") {
             pc.close();
             hostPeerConnections.delete(viewerId);
+          hostPendingIce.delete(viewerId);
           }
         }
       };
@@ -295,7 +299,9 @@
       await sendSignal({ type:"offer", to:viewerId, description:pc.localDescription });
     }
     async function createViewerPeer(hostClientId) {
+      const queuedCandidates = pendingIce;
       closeViewerConnection();
+      pendingIce = queuedCandidates;
       const pc = new RTCPeerConnection(rtcConfig);
       viewerPeerConnection = pc;
       pc.ontrack = event => {
@@ -325,12 +331,12 @@
         } else if (payload.type === "answer" && payload.to === clientId) {
           const pc = hostPeerConnections.get(payload.from);
           if (pc && payload.description) {
-            try { await pc.setRemoteDescription(payload.description); } catch (error) { console.warn("Could not set viewer answer", error); }
+            try {\n              await pc.setRemoteDescription(payload.description);\n              const queued = hostPendingIce.get(payload.from) || [];\n              hostPendingIce.delete(payload.from);\n              for (const candidate of queued) await pc.addIceCandidate(candidate);\n            } catch (error) { console.warn("Could not set viewer answer", error); }
           }
         } else if (payload.type === "ice" && payload.to === clientId && payload.candidate) {
           const pc = hostPeerConnections.get(payload.from);
           if (pc) {
-            try { await pc.addIceCandidate(payload.candidate); } catch (error) { console.warn("Could not add viewer ICE", error); }
+            if (!pc.remoteDescription) hostPendingIce.get(payload.from)?.push(payload.candidate);\n            else { try { await pc.addIceCandidate(payload.candidate); } catch (error) { console.warn("Could not add viewer ICE", error); } }
           }
         } else if (payload.type === "leave" && payload.viewerId) {
           const pc = hostPeerConnections.get(payload.viewerId);
@@ -476,6 +482,7 @@
         }
       } else {
         $("auth-button-container").innerHTML = '<a class="nav-auth-btn" href="../login/">Sign In</a>';
+        setConnection("Sign in required",true);
         setStatus("Sign in to watch the live stream and use chat.", true);
       }
 
