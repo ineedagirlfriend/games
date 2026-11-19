@@ -417,7 +417,8 @@
         $("streamer-name").textContent = profile?.username || "Streamer";
         $("streamer-subtitle").textContent = "Streaming now";
         $("streamer-avatar").textContent = (profile?.username || "S").slice(0,1).toUpperCase();
-        renderStreamerTags({ role:role, tags:profileTags, grade:profile?.grade });\n        loadAvatarForUser(user.id).then(url => { if (url) setStreamerAvatar(url, profile?.username); });
+        renderStreamerTags({ role:role, tags:profileTags, grade:profile?.grade });
+        loadAvatarForUser(user.id).then(url => { if (url) setStreamerAvatar(url, profile?.username); });
         $("stream-controls").hidden = true;
         $("stream-title-input").hidden = true;
         $("end-controls").hidden = false;
