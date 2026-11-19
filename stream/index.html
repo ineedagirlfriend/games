@@ -130,7 +130,11 @@
     let user = null;
     let profile = null;
     let role = "user";
-    let liveChannel = null;
+    let hostChannel = null;
+    let viewerChannel = null;
+    let hostChannelReady = false;
+    let viewerChannelReady = false;
+    let realtimeReady = false;
     let localStream = null;
     let activeHost = null;
     let hostPeerConnections = new Map();
@@ -152,8 +156,8 @@
       $("connection-label").style.color = error ? "#fca5a5" : "var(--text-muted)";
     }
     function setViewerCount() {
-      if (!liveChannel) return;
-      const state = liveChannel.presenceState();
+      if (!viewerChannel) return;
+      const state = viewerChannel.presenceState();
       let count = 0;
       Object.values(state).flat().forEach(item => {
         if (item.kind === "viewer" && item.streamId === activeStreamId) count++;
@@ -161,8 +165,8 @@
       $("viewer-counter").textContent = count + (count === 1 ? " viewer" : " viewers");
     }
     function findHost() {
-      if (!liveChannel) return null;
-      const state = liveChannel.presenceState();
+      if (!hostChannel) return null;
+      const state = hostChannel.presenceState();
       for (const entries of Object.values(state)) {
         for (const entry of entries) {
           if (entry.kind === "streamer" && entry.streamId) return entry;
@@ -251,8 +255,9 @@
       return String(value).replace(/[&<>"']/g, ch => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[ch]));
     }
     function sendSignal(payload) {
-      if (!liveChannel) return Promise.resolve();
-      return liveChannel.send({ type:"broadcast", event:"signal", payload:Object.assign({ streamId:activeStreamId, from:clientId }, payload) });
+      const channel = isHost ? hostChannel : viewerChannel;
+      if (!channel) return Promise.resolve();
+      return channel.send({ type:"broadcast", event:"signal", payload:Object.assign({ streamId:activeStreamId, from:clientId }, payload) });
     }
     function closeViewerConnection() {
       if (viewerPeerConnection) {
@@ -351,6 +356,12 @@
         }
         return;
       }
+      if (payload.type === "ended") {
+        closeViewerConnection();
+        updateHostUI(null);
+        setStatus("The streamer ended the stream.");
+        return;
+      }
       if (payload.to !== clientId) return;
       if (payload.type === "offer" && payload.description) {
         const pc = await createViewerPeer(payload.from);
@@ -364,22 +375,19 @@
         else {
           try { await viewerPeerConnection.addIceCandidate(payload.candidate); } catch (error) { console.warn("Could not add host ICE", error); }
         }
-      } else if (payload.type === "ended") {
-        closeViewerConnection();
-        updateHostUI(null);
-        setStatus("The streamer ended the stream.");
       }
     }
     async function startViewer(host) {
       if (!host || isHost || activeStreamId !== host.streamId) return;
       closeViewerConnection();
-      await liveChannel.track({ kind:"viewer", streamId:host.streamId, userId:user?.id || null, clientId });
+      if (!viewerChannelReady) return;
+      await viewerChannel.track({ kind:"viewer", streamId:host.streamId, userId:user?.id || null, clientId });
       await sendSignal({ type:"join", to:host.clientId, viewerId:clientId, viewerUserId:user?.id || null });
       setStatus("Connecting to " + host.username + "'s stream…");
       setViewerCount();
     }
     async function syncPresence() {
-      if (!liveChannel) return;
+      if (!hostChannel || !realtimeReady) return;
       const host = findHost();
       if (isHost) {
         updateHostUI({ streamId:activeStreamId, streamerId:user?.id, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
@@ -399,7 +407,7 @@
       setViewerCount();
     }
     async function startStream(source) {
-      if (!canStream() || isHost || !liveChannel) return;
+      if (!canStream() || isHost || !realtimeReady) return;
       const existing = findHost();
       if (existing) {
         setStatus("Someone is already streaming. Only one stream can be live at a time.", true);
@@ -434,7 +442,7 @@
         $("stream-controls").hidden = true;
         $("stream-title-input").hidden = true;
         $("end-controls").hidden = false;
-        await liveChannel.track({ kind:"streamer", streamId:activeStreamId, streamerId:user.id, clientId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
+        await hostChannel.track({ kind:"streamer", streamId:activeStreamId, streamerId:user.id, clientId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
         localStream.getVideoTracks()[0].addEventListener("ended", () => { if (isHost) endStream(); });
         setStatus("You're live. Keep this page open while streaming.");
         setViewerCount();
@@ -452,7 +460,7 @@
       if (localStream) localStream.getTracks().forEach(track => track.stop());
       localStream = null;
       isHost = false;
-      await liveChannel.untrack();
+      await hostChannel.untrack();
       $("stream-video").srcObject = null;
       $("live-indicator").classList.remove("active");
       $("end-controls").hidden = true;
@@ -494,21 +502,31 @@
 
       if (!user) return;
       if (backend.realtime?.setAuth) await backend.realtime.setAuth();
-      liveChannel = backend.channel("nagames-live-stream", { config:{ private:true, presence:{ key:clientId } } });
-      liveChannel
-        .on("presence", { event:"sync" }, () => { syncPresence().catch(error => console.warn("Presence sync failed",error)); })
-        .on("presence", { event:"join" }, () => { syncPresence().catch(error => console.warn("Presence join failed",error)); })
-        .on("presence", { event:"leave" }, () => { syncPresence().catch(error => console.warn("Presence leave failed",error)); })
-        .on("broadcast", { event:"signal" }, ({payload}) => { handleSignal(payload).catch(error => console.warn("Stream signaling failed",error)); })
+      hostChannel = backend.channel("nagames-live-stream-host", { config:{ private:true, presence:{ key:clientId } } });
+      viewerChannel = backend.channel("nagames-live-stream-viewers", { config:{ private:true, presence:{ key:clientId } } });
+
+      hostChannel
+        .on("presence", { event:"sync" }, () => { syncPresence().catch(error => console.warn("Stream host sync failed",error)); })
+        .on("presence", { event:"join" }, () => { syncPresence().catch(error => console.warn("Stream host join failed",error)); })
+        .on("presence", { event:"leave" }, () => { syncPresence().catch(error => console.warn("Stream host leave failed",error)); })
+        .on("broadcast", { event:"signal" }, ({payload}) => { if (!isHost) handleSignal(payload).catch(error => console.warn("Host signaling failed",error)); })
         .subscribe(status => {
-          if (status === "SUBSCRIBED") {
-            setConnection("Connected");
-            syncPresence().catch(error => console.warn("Initial stream sync failed",error));
-          } else if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
-            setConnection("Connection problem",true);
-          } else {
-            setConnection(status);
-          }
+          hostChannelReady = status === "SUBSCRIBED";
+          realtimeReady = hostChannelReady && viewerChannelReady;
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setConnection("Stream connection problem",true);
+          else if (realtimeReady) { setConnection("Connected"); syncPresence().catch(error => console.warn("Initial stream sync failed",error)); }
+        });
+
+      viewerChannel
+        .on("presence", { event:"sync" }, () => { setViewerCount(); })
+        .on("presence", { event:"join" }, () => { setViewerCount(); })
+        .on("presence", { event:"leave" }, () => { setViewerCount(); })
+        .on("broadcast", { event:"signal" }, ({payload}) => { if (isHost) handleSignal(payload).catch(error => console.warn("Viewer signaling failed",error)); })
+        .subscribe(status => {
+          viewerChannelReady = status === "SUBSCRIBED";
+          realtimeReady = hostChannelReady && viewerChannelReady;
+          if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") setConnection("Viewer connection problem",true);
+          else if (realtimeReady) { setConnection("Connected"); syncPresence().catch(error => console.warn("Initial stream sync failed",error)); }
         });
 
       $("front-camera-btn").addEventListener("click", () => startStream("front"));
@@ -519,7 +537,8 @@
         if (localStream) localStream.getTracks().forEach(track => track.stop());
         closeHostConnections();
         closeViewerConnection();
-        try { liveChannel?.untrack(); } catch (_) {}
+        try { hostChannel?.untrack(); } catch (_) {}
+        try { viewerChannel?.untrack(); } catch (_) {}
       });
     }
     initialize().catch(error => {
