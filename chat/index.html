@@ -2338,20 +2338,8 @@ async function loadAndCacheAllUsers() {
   }
 }
 
-const AVATAR_INDEX_SESSION_KEY = "cg-avatar-index-v2";
-const AVATAR_INDEX_CACHE_MS = 5 * 60 * 1000;
-
 async function loadAvatarIndex() {
   avatarIndexByUserId = new Map();
-  try {
-    const cached = JSON.parse(sessionStorage.getItem(AVATAR_INDEX_SESSION_KEY) || "null");
-    if (cached && Date.now() - cached.savedAt < AVATAR_INDEX_CACHE_MS && Array.isArray(cached.entries)) {
-      avatarIndexByUserId = new Map(cached.entries);
-      avatarUrlCache.clear();
-      return;
-    }
-  } catch (_) {}
-
   try {
     const { data, error } = await backend.storage.from("chat-files").list("avatars", {
       limit: 1000,
@@ -2377,12 +2365,6 @@ async function loadAvatarIndex() {
     });
 
     avatarIndexByUserId = latestByUser;
-    try {
-      sessionStorage.setItem(AVATAR_INDEX_SESSION_KEY, JSON.stringify({
-        savedAt: Date.now(),
-        entries: Array.from(latestByUser.entries())
-      }));
-    } catch (_) {}
     avatarUrlCache.clear();
   } catch (err) {
     console.warn("Failed to load avatar storage index:", err);
