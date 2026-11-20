@@ -2354,7 +2354,7 @@ async function loadAvatarIndex() {
     const latestByUser = new Map();
     data.forEach(item => {
       if (!item.name) return;
-      const match = item.name.match(/^(.+?)__(\d+)\\.(jpg|jpeg|png|webp)$/i);
+      const match = item.name.match(/^(.+?)__(\d+)\.(jpg|jpeg|png|webp)$/i);
       if (!match) return;
       const userId = match[1];
       const timestamp = parseInt(match[2], 10) || 0;
