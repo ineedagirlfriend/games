@@ -99,16 +99,21 @@ async function senderName(userId, fallback) {
   return data?.username || fallback || "Someone";
 }
 function notifyNaMessage(message) {
-  if (!message || message.userId === currentUser.id || message.isWhisper || message.isSystemMessage || message.role === "system") return;
+  if (!message || (currentUser?.id && message.userId === currentUser.id) || message.isWhisper || message.isSystemMessage || message.role === "system") return;
   if (message.server_id !== NA_SERVER_ID) return;
   const content = String(message.text || "");
   const everyone = containsEveryone(content);
-  if (!everyone && !containsMention(content, currentUsername)) return;
+  const directMention = !!currentUsername && containsMention(content, currentUsername);
+  // Visitors without accounts can still receive public @everyone alerts.
+  if (!everyone && !directMention) return;
   const sender = message.username || "Someone";
-  showMentionToast("@" + sender + " mentioned you in NA Chat", content, chatUrlFor({ channel: message.channel_id }));
+  const title = everyone
+    ? "@" + sender + " mentioned everyone in NA Chat"
+    : "@" + sender + " mentioned you in NA Chat";
+  showMentionToast(title, content, chatUrlFor({ channel: message.channel_id }));
 }
 async function notifyDMMessage(message) {
-  if (!message || message.sender_id === currentUser.id || !message.conversation_id || !dmMemberships.has(message.conversation_id)) return;
+  if (!currentUser?.id || !message || message.sender_id === currentUser.id || !message.conversation_id || !dmMemberships.has(message.conversation_id)) return;
   if (isIgnoredDM(currentUser.id, message.conversation_id)) return;
   if (!containsMention(message.content, currentUsername)) return;
   const sender = await senderName(message.sender_id, "Someone");
@@ -116,6 +121,7 @@ async function notifyDMMessage(message) {
   showMentionToast("@" + sender + " mentioned you in a DM", message.content, chatUrlFor({ dm: message.conversation_id }));
 }
 async function refreshDMMemberships() {
+  if (!currentUser?.id) return;
   const { data, error } = await backend.from("chat_conversation_members")
     .select("conversation_id").eq("user_id", currentUser.id);
   if (error) {
@@ -173,46 +179,54 @@ async function pollForMentions(force = false) {
   }
 }
 async function start() {
-  // The chat page has its own realtime listeners and mention handling. Starting
-  // a second notification client there only duplicates subscriptions/queries.
+  // The chat page has its own realtime listeners and mention handling.
   if (isChatPage) return;
+
   const { data: authData, error: authError } = await backend.auth.getUser();
   currentUser = authData?.user || null;
-  if (authError || !currentUser?.id) {
-    console.warn("[CG notifications] No signed-in user on this game page.", authError?.message || "");
-    return;
-  }
-  const { data: profile, error: profileError } = await backend.from("users").select("username").eq("id", currentUser.id).maybeSingle();
-  currentUsername = profile?.username || currentUser.user_metadata?.username || currentUser.username || "";
-  if (profileError) console.warn("[CG notifications] Profile lookup failed:", profileError.message);
-  if (!currentUsername) {
-    console.warn("[CG notifications] Could not determine the signed-in username.");
-    return;
+  currentUsername = "";
+
+  if (currentUser?.id) {
+    const { data: profile, error: profileError } = await backend
+      .from("users").select("username").eq("id", currentUser.id).maybeSingle();
+    currentUsername = profile?.username || currentUser.user_metadata?.username || currentUser.username || "";
+    if (profileError) console.warn("[CG notifications] Profile lookup failed:", profileError.message);
+    if (!currentUsername) console.warn("[CG notifications] Username unavailable; @everyone alerts will still work.");
+    await refreshDMMemberships();
+  } else {
+    console.info("[CG notifications] Guest mode: listening for public @everyone alerts.", authError?.message || "");
   }
 
-  await refreshDMMemberships();
   pollingStartedAt = Date.now() - 1500;
 
-  activeChannel = backend.channel("mention-notifications:" + currentUser.id)
+  let channel = backend.channel("mention-notifications:" + (currentUser?.id || "guest"))
     .on("postgres_changes", { event: "INSERT", schema: "public", table: "messages" }, payload => {
       if (document.visibilityState === "visible") processNaMessage(payload.new);
-    })
-    .on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_dm_messages" }, payload => {
-      if (document.visibilityState === "visible") processDMMessage(payload.new);
-    })
-    .subscribe((status, error) => {
-      realtimeSubscribed = status === "SUBSCRIBED";
-      console.info("[CG notifications] Realtime status:", status, error?.message || "");
-      if (!realtimeSubscribed && document.visibilityState === "visible") pollForMentions(true);
     });
 
-  // Realtime is the primary delivery path. Poll only as a slower fallback
-  // when the WebSocket is unavailable, rather than querying Supabase every 3.5s.
-  pollForMentions(true);
+  // DMs are private and only available to signed-in account holders.
+  if (currentUser?.id) {
+    channel = channel.on("postgres_changes", { event: "INSERT", schema: "public", table: "chat_dm_messages" }, payload => {
+      if (document.visibilityState === "visible") processDMMessage(payload.new);
+    });
+  }
+
+  activeChannel = channel.subscribe((status, error) => {
+    realtimeSubscribed = status === "SUBSCRIBED";
+    console.info("[CG notifications] Realtime status:", status, error?.message || "");
+    if (!realtimeSubscribed && currentUser?.id && document.visibilityState === "visible") pollForMentions(true);
+  });
+
+  if (currentUser?.id) pollForMentions(true);
+
+  // Poll only signed-in accounts, and only when Realtime is unavailable.
   const pollTimer = setInterval(() => {
-    if (!realtimeSubscribed) pollForMentions();
+    if (currentUser?.id && !realtimeSubscribed) pollForMentions();
   }, 15000);
-  const membershipTimer = setInterval(refreshDMMemberships, 60000);
+  const membershipTimer = setInterval(() => {
+    if (currentUser?.id) refreshDMMemberships();
+  }, 60000);
+
   window.addEventListener("pagehide", () => {
     clearInterval(pollTimer);
     clearInterval(membershipTimer);
@@ -221,8 +235,9 @@ async function start() {
 
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState !== "visible") dismissToast();
-    else pollForMentions(true);
+    else if (currentUser?.id) pollForMentions(true);
   });
-  console.info("[CG notifications] Ready for @" + currentUsername + " on this game page.");
+
+  console.info("[CG notifications] Ready for " + (currentUsername ? "@" + currentUsername : "guest @everyone") + " on this page.");
 }
 start().catch(error => console.warn("Mention notifications could not start:", error));
