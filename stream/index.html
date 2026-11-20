@@ -211,7 +211,7 @@
         if (error || !data) throw error || new Error("Avatar listing unavailable");
         const latest = new Map();
         data.forEach(item => {
-          const match = item.name?.match(/^(.+?)__(\\d+)\\.(jpg|jpeg|png|webp)$/i);
+          const match = item.name?.match(/^(.+?)__(\d+)\\.(jpg|jpeg|png|webp)$/i);
           if (!match) return;
           const timestamp = Number(match[2]) || 0;
           const old = latest.get(match[1]);
