@@ -1013,7 +1013,7 @@
             .upload(storagePath, avatarBlob, {
               contentType: 'image/jpeg',
               upsert: false,
-              cacheControl: '0'
+              cacheControl: '31536000'
             });
 
           if (uploadError) throw uploadError;
@@ -1037,7 +1037,7 @@
       try {
         const latestAvatarPath = await getLatestAvatarPathForUser(user.id);
         if (latestAvatarPath) {
-          const avatarUrl = getAvatarPublicUrl(latestAvatarPath) + `?v=${Date.now()}`;
+          const avatarUrl = getAvatarPublicUrl(latestAvatarPath);
           await setAvatarFromUrl(avatarUrl);
         }
       } catch (err) {
