@@ -207,13 +207,6 @@
     async function getAvatarFileIndex() {
       if (avatarFileIndexPromise) return avatarFileIndexPromise;
       avatarFileIndexPromise = (async () => {
-        const cacheKey = "cg-avatar-index-v2";
-        try {
-          const cached = JSON.parse(sessionStorage.getItem(cacheKey) || "null");
-          if (cached && Date.now() - cached.savedAt < 5 * 60 * 1000 && Array.isArray(cached.entries)) {
-            return cached.entries.map(([userId, entry]) => ({ userId, fileName: entry.fileName, timestamp: entry.timestamp }));
-          }
-        } catch (_) {}
         const { data, error } = await backend.storage.from("chat-files").list("avatars", { limit:1000, sortBy:{column:"name",order:"desc"} });
         if (error || !data) throw error || new Error("Avatar listing unavailable");
         const latest = new Map();
@@ -225,7 +218,6 @@
           if (!old || timestamp > old.timestamp) latest.set(match[1], { fileName:item.name, timestamp });
         });
         const entries = Array.from(latest.entries());
-        try { sessionStorage.setItem(cacheKey, JSON.stringify({ savedAt:Date.now(), entries })); } catch (_) {}
         return entries.map(([userId, entry]) => ({ userId, ...entry }));
       })().catch(error => {
         avatarFileIndexPromise = null;
