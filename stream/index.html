@@ -12,7 +12,7 @@
     body { min-height:100vh; }
     .stream-page { width:min(1500px,100%); margin:0 auto; padding:28px 24px 50px; flex:1; }
     .stream-heading { display:flex;align-items:center;justify-content:space-between;gap:16px;margin:10px 0 22px; }
-    .stream-heading h1 { font:800 clamp(1.7rem,3vw,2.5rem)/1.1 var(--font-display);letter-spacing:-.04em; }
+    .stream-heading h1 { font:800 2rem/1.2 var(--font-display);letter-spacing:-.03em;color:var(--text); }
     .stream-heading p { color:var(--text-muted);margin-top:7px;font-size:.92rem; }
     .live-layout { display:grid;grid-template-columns:minmax(0,1.65fr) minmax(310px,.9fr);gap:20px;align-items:stretch;min-height:660px; }
     .stream-column,.stream-chat-panel { min-width:0;background:var(--card);border:1px solid var(--border);border-radius:18px;overflow:hidden;box-shadow:0 18px 50px rgba(0,0,0,.18); }
@@ -48,7 +48,7 @@
     .stream-chat-frame { width:100%;height:100%;min-height:600px;flex:1;border:0;background:var(--bg); }
     .stream-notice { margin-top:16px;padding:12px 15px;border:1px solid var(--border);border-radius:10px;color:var(--text-muted);font-size:.78rem;line-height:1.5; }
     @media(max-width:900px) { .live-layout{grid-template-columns:1fr;min-height:0}.stream-chat-panel{height:560px}.stream-chat-frame{min-height:0}.stream-page{padding:20px 14px 35px} }
-    @media(max-width:520px) { header{padding:12px 14px}.nav-container{gap:10px}.nav-container nav ul{gap:4px;flex-wrap:wrap;justify-content:flex-end}.nav-container nav a{font-size:.75rem;padding:7px 8px}.stream-heading{align-items:flex-start;flex-direction:column}.stream-details{padding:17px}.stream-controls{padding:0 17px 17px}.stream-title-input{margin:0 17px 12px;width:calc(100% - 34px)}.stream-status{padding:0 17px 14px} }
+    @media(max-width:520px) { .stream-heading{align-items:flex-start;flex-direction:column}.stream-details{padding:17px}.stream-controls{padding:0 17px 17px}.stream-title-input{margin:0 17px 12px;width:calc(100% - 34px)}.stream-status{padding:0 17px 14px} }
   </style>
 </head>
 <body>
@@ -488,7 +488,17 @@
         profile = result.data || { username:user.email?.split("@")[0] || "User", role:"user", tags:[] };
         role = String(profile.role || "user").toLowerCase();
         profileTags = Array.isArray(profile.tags) ? profile.tags : [];
-        $("auth-button-container").innerHTML = '<a class="nav-auth-btn" href="../settings/">Account</a>';
+        $("auth-button-container").innerHTML = '<a id="logout-btn" class="nav-auth-btn" href="#">Logout</a>';
+        $("logout-btn").addEventListener("click", async event => {
+          event.preventDefault();
+          try {
+            await backend.auth.signOut();
+            window.location.reload();
+          } catch (error) {
+            console.error("Logout error:", error);
+            setStatus("Could not log out. Please try again.", true);
+          }
+        });
         $("streamer-name").textContent = profile.username || "User";
         $("streamer-avatar").textContent = (profile.username || "U").slice(0,1).toUpperCase();
         if (canStream()) {
