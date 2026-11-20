@@ -1736,7 +1736,7 @@ async function manageChatServer(user){
     picker.onchange=async()=>{const file=picker.files?.[0];if(!file)return;if(file.size>5*1024*1024){uiAlert("Server pictures must be 5 MB or smaller.");return;}
       const ext=(file.name.split(".").pop()||"png").toLowerCase().replace(/[^a-z0-9]/g,"");
       const path="server-icons/"+user.id+"/"+activeChatServerId+"-"+Date.now()+"."+ext;
-      const upload=await backend.storage.from("chat-files").upload(path,file,{upsert:false,contentType:file.type});
+      const upload=await backend.storage.from("chat-files").upload(path,file,{upsert:false,contentType:file.type,cacheControl:"31536000"});
       if(upload.error){uiAlert("Picture upload failed: "+upload.error.message);return;}
       const url=backend.storage.from("chat-files").getPublicUrl(path).data.publicUrl;
       const saved=await backend.from("chat_servers").update({icon_url:url}).eq("id",activeChatServerId);
