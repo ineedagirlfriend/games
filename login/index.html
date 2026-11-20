@@ -43,7 +43,7 @@
   </div>
 
   <div id="auth-choice" class="auth-choice">
-    <button type="button" id="choose-signin" class="choice-primary">Sign in</button>
+    <button type="button" id="choose-signin" class="choice-primary">Sign in (WITH OLD ACCOUNT)</button>
     <button type="button" id="choose-signup" class="choice-secondary">Create new account</button>
   </div>
 
@@ -174,12 +174,12 @@ toggle.addEventListener("click", () => {
 function updateAuthMode() {
 
   title.textContent = signUpMode ? "Create account" : "Sign in";
-  submitBtn.textContent = signUpMode ? "Create account" : "Sign in";
+  submitBtn.textContent = signUpMode ? "Create account" : "Sign in (WITH OLD ACCOUNT)";
 
   document.getElementById("mode-text").textContent =
     signUpMode ? "Already have an account?" : "Don't have an account?";
 
-  toggle.textContent = signUpMode ? "Sign in" : "Create account";
+  toggle.textContent = signUpMode ? "Sign in (WITH OLD ACCOUNT)" : "Create account";
   nameField.classList.toggle("hidden", !signUpMode);
   emailField.querySelector("label").textContent = signUpMode ? "Email address" : "Email address";
   emailInput.placeholder = "you@example.com";
