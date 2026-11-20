@@ -59,6 +59,7 @@
         <ul>
           <li><a href="../">Home</a></li>
           <li><a href="../games/">Games</a></li>
+          <li><a href="../stream/">Stream</a></li>
           <li><a href="../omoggle/">Omoggle</a></li>
           <li><a href="../chat/">Chat</a></li>
           <li><a href="../settings/">Settings</a></li>
@@ -70,7 +71,7 @@
 
   <main class="stream-page">
     <div class="stream-heading">
-      <div><h1>Live Stream</h1><p>Watch the current NAGames live stream and chat in its own room.</p></div>
+      <div><h1>Live Stream</h1><p>Watch the current stream and chat in its own room.</p></div>
       <div id="connection-label" style="color:var(--text-muted);font-size:.78rem;font-weight:700">Connecting…</div>
     </div>
 
@@ -99,7 +100,7 @@
           </div>
         </div>
 
-        <input id="stream-title-input" class="stream-title-input" maxlength="100" placeholder="Stream title (optional)" value="Live on NAGames" hidden>
+        <input id="stream-title-input" class="stream-title-input" maxlength="100" placeholder="Stream title (optional)" hidden>
         <div class="stream-controls" id="stream-controls" hidden>
           <button id="front-camera-btn" type="button">Stream front camera</button>
           <button id="back-camera-btn" type="button">Stream back camera</button>
@@ -117,7 +118,6 @@
       </aside>
     </div>
 
-    <div class="stream-notice">Video is sent directly between viewers and the streamer using WebRTC. It is not uploaded or saved. Camera and screen sharing may pause if your browser backgrounds the page or locks the device.</div>
   </main>
 
   <script type="module">
