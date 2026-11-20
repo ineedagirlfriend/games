@@ -108,7 +108,7 @@ function notifyNaMessage(message) {
     const onGamesPage = /\/games(?:\/|$)/i.test(location.pathname);
     const target = onGamesPage
       ? chatUrlFor({ channel: message.channel_id })
-      : new URL("../stream/", import.meta.url).href;
+      : new URL("../live/", import.meta.url).href;
     showMentionToast("Someone is live", message.text, target);
     return;
   }
