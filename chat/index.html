@@ -2338,11 +2338,20 @@ async function loadAndCacheAllUsers() {
   }
 }
 
+const AVATAR_INDEX_SESSION_KEY = "cg-avatar-index-v2";
+const AVATAR_INDEX_CACHE_MS = 5 * 60 * 1000;
+
 async function loadAvatarIndex() {
   avatarIndexByUserId = new Map();
+  try {
+    const cached = JSON.parse(sessionStorage.getItem(AVATAR_INDEX_SESSION_KEY) || "null");
+    if (cached && Date.now() - cached.savedAt < AVATAR_INDEX_CACHE_MS && Array.isArray(cached.entries)) {
+      avatarIndexByUserId = new Map(cached.entries);
+      avatarUrlCache.clear();
+      return;
+    }
+  } catch (_) {}
 
-  // Always fetch the current Storage listing. A sessionStorage copy becomes
-  // stale when a user changes their profile picture in another page/tab.
   try {
     const { data, error } = await backend.storage.from("chat-files").list("avatars", {
       limit: 1000,
@@ -2350,16 +2359,15 @@ async function loadAvatarIndex() {
     });
 
     if (error || !data) {
-      console.error("Could not refresh profile picture index:", error);
+      console.warn("Could not refresh profile picture index:", error);
       return;
     }
 
     const latestByUser = new Map();
     data.forEach(item => {
       if (!item.name) return;
-      const match = item.name.match(/^(.+?)__(\d+)\.(jpg|jpeg|png|webp)$/i);
+      const match = item.name.match(/^(.+?)__(\\d+)\\.(jpg|jpeg|png|webp)$/i);
       if (!match) return;
-
       const userId = match[1];
       const timestamp = parseInt(match[2], 10) || 0;
       const existing = latestByUser.get(userId);
@@ -2369,13 +2377,17 @@ async function loadAvatarIndex() {
     });
 
     avatarIndexByUserId = latestByUser;
+    try {
+      sessionStorage.setItem(AVATAR_INDEX_SESSION_KEY, JSON.stringify({
+        savedAt: Date.now(),
+        entries: Array.from(latestByUser.entries())
+      }));
+    } catch (_) {}
     avatarUrlCache.clear();
   } catch (err) {
-    console.error("Failed to load avatar storage index:", err);
-    avatarIndexByUserId = new Map();
+    console.warn("Failed to load avatar storage index:", err);
   }
 }
-
 function clearEphemeralSystemMessages() {
   ephemeralSystemMessages = [];
 }
