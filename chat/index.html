@@ -3626,8 +3626,8 @@ async function startChat(user) {
     let textToSend = input.value.trim();
     if (!textToSend) return;
 
-    if (containsMassMention(textToSend) && currentUserRole !== "admin" && currentUserRole !== "owner" && currentUserRole !== "streamer") {
-      showLocalSystemMessage("Only Owners and Admins can use @everyone or @here. You can still mention individual users.", true);
+    if (/(^|[^A-Za-z0-9_.-])@here(?![A-Za-z0-9_.-])/i.test(textToSend) && currentUserRole !== "admin" && currentUserRole !== "owner" && currentUserRole !== "streamer") {
+      showLocalSystemMessage("Only Owners, Admins, and Streamers can use @here. @everyone is available to everyone.", true);
       return;
     }
 
@@ -5212,8 +5212,8 @@ function getMentionSuggestionItems(searchStr = "") {
   const isAdminPlus = currentUserRole === "admin" || currentUserRole === "owner" || currentUserRole === "streamer";
   const specialItems = [
     { username: "mod", avatar: "@", isSpecial: true },
+    { username: "everyone", avatar: "@", isSpecial: true },
     ...(isAdminPlus ? [
-      { username: "everyone", avatar: "@", isSpecial: true },
       { username: "here", avatar: "@", isSpecial: true }
     ] : [])
   ].filter(item => item.username.startsWith(normalizedSearch));
