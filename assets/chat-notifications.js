@@ -109,7 +109,7 @@ function notifyNaMessage(message) {
     const target = onGamesPage
       ? chatUrlFor({ channel: message.channel_id })
       : new URL("../stream/", import.meta.url).href;
-    showMentionToast("A streamer is live", message.text, target);
+    showMentionToast("Someone is live", message.text, target);
     return;
   }
   if ((currentUser?.id && message.userId === currentUser.id) || message.isWhisper || message.isSystemMessage || message.role === "system") return;
