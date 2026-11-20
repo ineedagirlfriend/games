@@ -1013,7 +1013,7 @@
             .upload(storagePath, avatarBlob, {
               contentType: 'image/jpeg',
               upsert: false,
-              cacheControl: '31536000'
+              cacheControl: '0'
             });
 
           if (uploadError) throw uploadError;
