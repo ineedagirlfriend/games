@@ -2354,7 +2354,7 @@ async function loadAvatarIndex() {
     const latestByUser = new Map();
     data.forEach(item => {
       if (!item.name) return;
-      const match = item.name.match(/^(.+?)__(\\d+)\\.(jpg|jpeg|png|webp)$/i);
+      const match = item.name.match(/^(.+?)__(\d+)\\.(jpg|jpeg|png|webp)$/i);
       if (!match) return;
       const userId = match[1];
       const timestamp = parseInt(match[2], 10) || 0;
@@ -3718,7 +3718,7 @@ async function startChat(user) {
       // single-word username.
       if (targetUsernames.length === 0 && segments.length > 1 && !/^@everyone$/i.test(segments[1])) {
         const firstArg = segments[1];
-        const isDuration = /^\\d+(s|m|h|d|w|mo|y)$/i.test(firstArg);
+        const isDuration = /^\d+(s|m|h|d|w|mo|y)$/i.test(firstArg);
         if (!isDuration && firstArg.length > 0) {
           targetUsernames.push(firstArg.replace(/[.,!?;:]+$/, '').toLowerCase());
           effectiveSegments = [segments[0], '@' + firstArg, ...segments.slice(2)];
