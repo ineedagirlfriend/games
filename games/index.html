@@ -84,8 +84,8 @@
       <nav>
         <ul>
           <li><a href="../">Home</a></li>
-          <li><a href="#" class="active">Games</a></li>
-          <li><a href="../stream/">Stream</a></li>
+          <li><a href="#" class="active">Stuff</a></li>
+          <li><a href="../stream/">Live</a></li>
           <li><a href="../omoggle/">Omoggle</a></li>
           <li><a href="../chat/">Chat</a></li>
           <li><a href="../settings/">Settings</a></li>
@@ -97,11 +97,11 @@
 
   <main class="container">
     <div class="header-bar">
-      <h2>Games</h2>
-      <input id="game-search" type="text" class="input-field" placeholder="Search games..." aria-label="Search games">
+      <h2>Stuff</h2>
+      <input id="game-search" type="text" class="input-field" placeholder="Search stuff..." aria-label="Search stuff">
     </div>
 
-    <div id="no-results" class="no-results" aria-live="polite" hidden>No games match your search.</div>
+    <div id="no-results" class="no-results" aria-live="polite" hidden>No stuff match your search.</div>
 
     <div class="game-grid">
       <a class="game-card" href="/gamesplay/10minutestilldawn/" aria-label="Play 10 Minutes Till Dawn">
@@ -4877,7 +4877,7 @@
 
       // init count in header
       const headerCount = document.querySelector('.header-bar h2');
-      if(headerCount) headerCount.textContent = `Games (${cards.length})`;
+      if(headerCount) headerCount.textContent = `Stuff (${cards.length})`;
     })();
   </script>
 
