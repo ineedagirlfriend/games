@@ -203,16 +203,44 @@
       img.onerror = () => { avatar.textContent = (username || "S").slice(0,1).toUpperCase(); };
       avatar.replaceChildren(img);
     }
+    let avatarFileIndexPromise = null;
+    async function getAvatarFileIndex() {
+      if (avatarFileIndexPromise) return avatarFileIndexPromise;
+      avatarFileIndexPromise = (async () => {
+        const cacheKey = "cg-avatar-index-v2";
+        try {
+          const cached = JSON.parse(sessionStorage.getItem(cacheKey) || "null");
+          if (cached && Date.now() - cached.savedAt < 5 * 60 * 1000 && Array.isArray(cached.entries)) {
+            return cached.entries.map(([userId, entry]) => ({ userId, fileName: entry.fileName, timestamp: entry.timestamp }));
+          }
+        } catch (_) {}
+        const { data, error } = await backend.storage.from("chat-files").list("avatars", { limit:1000, sortBy:{column:"name",order:"desc"} });
+        if (error || !data) throw error || new Error("Avatar listing unavailable");
+        const latest = new Map();
+        data.forEach(item => {
+          const match = item.name?.match(/^(.+?)__(\\d+)\\.(jpg|jpeg|png|webp)$/i);
+          if (!match) return;
+          const timestamp = Number(match[2]) || 0;
+          const old = latest.get(match[1]);
+          if (!old || timestamp > old.timestamp) latest.set(match[1], { fileName:item.name, timestamp });
+        });
+        const entries = Array.from(latest.entries());
+        try { sessionStorage.setItem(cacheKey, JSON.stringify({ savedAt:Date.now(), entries })); } catch (_) {}
+        return entries.map(([userId, entry]) => ({ userId, ...entry }));
+      })().catch(error => {
+        avatarFileIndexPromise = null;
+        throw error;
+      });
+      return avatarFileIndexPromise;
+    }
     async function loadAvatarForUser(userId) {
       if (!userId) return null;
       if (avatarUrlCache.has(userId)) return avatarUrlCache.get(userId);
       try {
-        const { data, error } = await backend.storage.from("chat-files").list("avatars", { limit:1000, sortBy:{column:"name",order:"desc"} });
-        if (error || !data) return null;
-        const files = data.filter(item => item.name && item.name.startsWith(userId + "__"));
-        files.sort((a,b) => Number((b.name.match(/__(\d+)\./) || [])[1] || 0) - Number((a.name.match(/__(\d+)\./) || [])[1] || 0));
-        if (!files.length) return null;
-        const url = backend.storage.from("chat-files").getPublicUrl("avatars/" + files[0].name).data.publicUrl;
+        const entries = await getAvatarFileIndex();
+        const entry = entries.find(item => item.userId === userId);
+        if (!entry) return null;
+        const url = backend.storage.from("chat-files").getPublicUrl("avatars/" + entry.fileName).data.publicUrl;
         avatarUrlCache.set(userId,url);
         return url;
       } catch (_) { return null; }
