@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-  <title>Live Stream | NAGames</title>
+  <title>Live | NAGames</title>
   <script src="../assets/theme-loader.js"></script>
   <link rel="stylesheet" href="../style.css">
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@600;700;800;900&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -58,8 +58,8 @@
       <nav>
         <ul>
           <li><a href="../">Home</a></li>
-          <li><a href="../games/">Games</a></li>
-          <li><a href="../stream/">Stream</a></li>
+          <li><a href="../games/">Stuff</a></li>
+          <li><a href="../stream/">Live</a></li>
           <li><a href="../omoggle/">Omoggle</a></li>
           <li><a href="../chat/">Chat</a></li>
           <li><a href="../settings/">Settings</a></li>
@@ -71,7 +71,7 @@
 
   <main class="stream-page">
     <div class="stream-heading">
-      <div><h1>Live Stream</h1></div>
+      <div><h1>Live</h1></div>
       
     </div>
 
@@ -81,8 +81,8 @@
           <video id="stream-video" autoplay playsinline controls></video>
           <div class="video-empty" id="video-empty">
             <div class="video-empty-icon">▶</div>
-            <strong>Nobody is streaming right now</strong>
-            <span>When someone goes live, the stream will appear here.</span>
+            <strong>Nobody is live right now</strong>
+            <span>When someone goes live, the live session will appear here.</span>
           </div>
           <div class="live-indicator" id="live-indicator"><span class="live-dot"></span> LIVE</div>
           <div class="viewer-counter" id="viewer-counter">0 viewers</div>
@@ -100,20 +100,20 @@
           </div>
         </div>
 
-        <input id="stream-title-input" class="stream-title-input" maxlength="100" placeholder="Stream title (optional)" hidden>
+        <input id="stream-title-input" class="stream-title-input" maxlength="100" placeholder="Live title (optional)" hidden>
         <div class="stream-controls" id="stream-controls" hidden>
-          <button id="front-camera-btn" type="button">Stream front camera</button>
-          <button id="back-camera-btn" type="button">Stream back camera</button>
-          <button id="screen-share-btn" type="button">Stream screen</button>
+          <button id="front-camera-btn" type="button">Go live with front camera</button>
+          <button id="back-camera-btn" type="button">Go live with back camera</button>
+          <button id="screen-share-btn" type="button">Share screen live</button>
         </div>
         <div class="stream-controls" id="end-controls" hidden>
-          <button id="end-stream-btn" class="end-stream" type="button">End stream</button>
+          <button id="end-stream-btn" class="end-stream" type="button">End live</button>
         </div>
         <div class="stream-status" id="stream-status" role="status"></div>
       </section>
 
       <aside class="stream-chat-panel">
-        <div class="chat-panel-heading"><span>Live Chat</span><span>Separate stream room</span></div>
+        <div class="chat-panel-heading"><span>Live Chat</span><span>Separate live chat</span></div>
         <iframe class="stream-chat-frame" title="Live stream chat" src="../chat/?channel=10000000-0000-4000-8000-000000000004&amp;embed=stream"></iframe>
       </aside>
     </div>
@@ -375,7 +375,7 @@
       if (payload.type === "ended") {
         closeViewerConnection();
         updateHostUI(null);
-        setStatus("The streamer ended the stream.");
+        setStatus("The live session ended.");
         return;
       }
       if (payload.to !== clientId) return;
@@ -407,7 +407,7 @@
       const host = hosts[0] || null;
       if (isHost) {
         if (host && host.clientId !== clientId) {
-          setStatus("Another streamer went live at the same time. Your stream was stopped.", true);
+          setStatus("Another person went live at the same time. Your live session was stopped.", true);
           await endStream();
           return;
         }
@@ -423,7 +423,7 @@
           activeHost = null;
         }
         updateHostUI(null);
-        if (canStream()) setStatus("You're allowed to stream. Start when you're ready.");
+        if (canStream()) setStatus("You're allowed to go live. Start when you're ready.");
       }
       setViewerCount();
     }
@@ -431,7 +431,7 @@
       if (!canStream() || isHost || !realtimeReady) return;
       const existing = findHost();
       if (existing) {
-        setStatus("Someone is already streaming. Only one stream can be live at a time.", true);
+        setStatus("Someone is already live. Only one live session can be active at a time.", true);
         return;
       }
       try {
@@ -481,7 +481,7 @@
         await hostChannel.track({ kind:"streamer", streamId:activeStreamId, streamerId:user.id, clientId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
         try {
           const streamerUsername = profile?.username || user.email?.split("@")[0] || "Streamer";
-          const streamTitle = $("stream-title").textContent || "Untitled stream";
+          const streamTitle = $("stream-title").textContent || "Untitled live session";
           const { error: noticeError } = await backend.from("messages").insert([{
             text: "@everyone @" + streamerUsername + " started streaming! (" + streamTitle + ")",
             username: "Server",
@@ -502,7 +502,7 @@
         if (localStream) localStream.getTracks().forEach(track => track.stop());
         localStream = null;
         isHost = false;
-        setStatus(error.message || "Could not start the stream.", true);
+        setStatus(error.message || "Could not start the live session.", true);
       }
     }
     async function endStream() {
@@ -524,7 +524,7 @@
       $("streamer-tags").innerHTML = "";
       activeStreamId = null;
       updateHostUI(null);
-      setStatus("Stream ended.");
+      setStatus("Live session ended.");
     }
 
     async function initialize() {
@@ -551,7 +551,7 @@
         if (canStream()) {
           $("stream-controls").hidden = false;
           $("stream-title-input").hidden = false;
-          setStatus("You're allowed to stream. Choose a camera or screen.");
+          setStatus("You're allowed to go live. Choose a camera or screen.");
         } else {
           $("stream-controls").hidden = true;
           $("stream-title-input").hidden = true;
