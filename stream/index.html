@@ -445,14 +445,29 @@
       try {
         if (source === "screen") {
           if (!navigator.mediaDevices?.getDisplayMedia) throw new Error("Screen sharing is not supported by this browser.");
-          localStream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:{ ideal:30, max:60 } }, audio:false });
+          // Ask the browser to include tab/system audio when the selected surface supports it.
+          localStream = await navigator.mediaDevices.getDisplayMedia({ video:{ frameRate:{ ideal:30, max:60 } }, audio:true });
         } else {
-          if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera access is not supported by this browser.");
+          if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera and microphone access is not supported by this browser.");
           const facingMode = source === "back" ? "environment" : "user";
           try {
-            localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ exact:facingMode }, width:{ ideal:1920 }, height:{ ideal:1080 }, frameRate:{ ideal:30, max:60 } }, audio:false });
+            localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ exact:facingMode }, width:{ ideal:1920 }, height:{ ideal:1080 }, frameRate:{ ideal:30, max:60 } }, audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true } });
           } catch (_) {
+            // Keep video working on devices where microphone permission or audio capture is unavailable.
             localStream = await navigator.mediaDevices.getUserMedia({ video:{ facingMode:{ ideal:facingMode }, width:{ ideal:1920 }, height:{ ideal:1080 } }, audio:false });
+          }
+        }
+        // Screen-share audio is browser-dependent. If it wasn't supplied, try adding the microphone.
+        if (!localStream.getAudioTracks().length && navigator.mediaDevices?.getUserMedia) {
+          try {
+            const microphone = await navigator.mediaDevices.getUserMedia({ audio:{ echoCancellation:true, noiseSuppression:true, autoGainControl:true }, video:false });
+            microphone.getAudioTracks().forEach(track => {
+              localStream.addTrack(track);
+              track.addEventListener("ended", () => setStatus("Microphone audio stopped; video is still streaming."));
+            });
+          } catch (audioError) {
+            console.warn("Stream audio unavailable:", audioError);
+            setStatus("Video is live, but microphone/system audio was not available. Check browser microphone permissions.", true);
           }
         }
         activeStreamId = crypto.randomUUID ? crypto.randomUUID() : "stream-" + Date.now();
