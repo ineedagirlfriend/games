@@ -72,7 +72,7 @@
   <main class="stream-page">
     <div class="stream-heading">
       <div><h1>Live Stream</h1></div>
-      <div id="connection-label" style="color:var(--text-muted);font-size:.78rem;font-weight:700">Connecting…</div>
+      
     </div>
 
     <div class="live-layout">
@@ -151,10 +151,7 @@
       $("stream-status").textContent = message || "";
       $("stream-status").style.color = error ? "#fca5a5" : "var(--text-muted)";
     }
-    function setConnection(message, error) {
-      $("connection-label").textContent = message;
-      $("connection-label").style.color = error ? "#fca5a5" : "var(--text-muted)";
-    }
+    function setConnection() {}
     function setViewerCount() {
       if (!viewerChannel) return;
       const state = viewerChannel.presenceState();
@@ -382,7 +379,6 @@
       if (!viewerChannelReady) return;
       await viewerChannel.track({ kind:"viewer", streamId:host.streamId, userId:user?.id || null, clientId });
       await sendSignal({ type:"join", to:host.clientId, viewerId:clientId, viewerUserId:user?.id || null });
-      setStatus("Connecting to " + host.username + "'s stream…");
       setViewerCount();
     }
     async function syncPresence() {
@@ -448,6 +444,22 @@
         $("stream-title-input").hidden = true;
         $("end-controls").hidden = false;
         await hostChannel.track({ kind:"streamer", streamId:activeStreamId, streamerId:user.id, clientId, username:profile?.username || "Streamer", title:$("stream-title").textContent, role:role, tags:profileTags, grade:profile?.grade || "" });
+        try {
+          const streamerUsername = profile?.username || user.email?.split("@")[0] || "Streamer";
+          const streamTitle = $("stream-title").textContent || "Untitled stream";
+          const { error: noticeError } = await backend.from("messages").insert([{
+            text: "@everyone @" + streamerUsername + " started streaming! (" + streamTitle + ")",
+            username: "Server",
+            userId: null,
+            role: "system",
+            type: "stream_notice",
+            server_id: "10000000-0000-4000-8000-000000000001",
+            channel_id: "10000000-0000-4000-8000-000000000004"
+          }]);
+          if (noticeError) console.warn("Could not post stream announcement:", noticeError);
+        } catch (noticeError) {
+          console.warn("Could not post stream announcement:", noticeError);
+        }
         localStream.getVideoTracks()[0].addEventListener("ended", () => { if (isHost) endStream(); });
         setStatus("You're live. Keep this page open while streaming.");
         setViewerCount();
@@ -510,9 +522,8 @@
           $("stream-title-input").hidden = true;
         }
       } else {
-        $("auth-button-container").innerHTML = '<a class="nav-auth-btn" href="../login/">Sign In</a>';
-        setConnection("Sign in required",true);
-        setStatus("Sign in to watch the live stream and use chat.", true);
+        window.location.replace("../login/");
+        return;
       }
 
       if (!user) return;
